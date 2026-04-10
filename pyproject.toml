@@ -1,0 +1,24 @@
+[project]
+name = "btcpay_tools"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "andreas griffin",email = "andreasgriffin@proton.me"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+
+[tool.poetry.dependencies]
+PyYAML = "^6.0.2"
+requests = "^2.32.3"
+nostr-sdk = "^0.44.2"
+bitcoin-safe-lib = { git = "https://github.com/andreasgriffin/bitcoin-safe-lib.git", branch = "main" }
+pydantic = "^2.10.6"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.0"
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

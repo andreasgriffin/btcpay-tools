@@ -1,0 +1,95 @@
+repos:
+
+  # - repo: https://github.com/asmeurer/removestar
+  #   rev: "1.5.2"
+  #   hooks:
+  #     - id: removestar
+  #       args: [-i] # See docs for all args (-i edits file in-place)
+  #       exclude: ^(bitcoin_safe/stubs)
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.1  
+    hooks:
+      # Lint + auto-fix (includes import sorting, unused imports, etc.)
+      - id: ruff-format
+      - id: ruff-check
+        args: [--fix, --exit-non-zero-on-fix]
+        # If you don't want to run on notebooks, uncomment:
+        # types_or: [python, pyi]
+      # Formatter (Black-compatible)
+
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2   # Use the latest MyPy version
+    hooks:
+      - id: mypy
+        files: ^bitcoin_safe/|^tools/
+        args: 
+          - --check-untyped-defs
+          # - --disallow-untyped-defs
+          # - --disallow-untyped-calls
+          # - --disallow-incomplete-defs
+          # - --strict-optional
+          - --implicit-optional
+          - --strict-equality
+          # - --warn-return-any
+          - --warn-redundant-casts
+          - --warn-unreachable
+          # - --disallow-any-generics           
+          # - --strict        
+          - --install-types
+          - --non-interactive   
+          - --ignore-missing-imports
+          - --show-error-codes 
+        additional_dependencies: 
+          - types-requests
+          - types-PyYAML
+          - types-toml    
+          - pytest-mypy
+          - types-Pillow
+          - types-reportlab
+          - pyqt6 
+
+
+
+  - repo: local
+    hooks:
+      - id: forbidden-commit-content
+        name: Block forbidden commit content
+        entry: python scripts/check_forbidden_commit_content.py
+        language: system
+        types: [text]
+        exclude: ^tests/|\.md$|\.py$
+      - id: pyright
+        name: Pyright Type Check (npm install -g pyright)
+        entry: bash -c 'if command -v pyright >/dev/null; then pyright; else echo "pyright not installed, skipping..."; exit 0; fi'
+        language: system
+        types: [python]
+        pass_filenames: false
+
+
+
+  # - repo: https://github.com/PyCQA/bandit
+  #   rev: 1.7.6  # Use the latest version
+  #   hooks:
+  #     - id: bandit
+  #       args: ['--exclude', 'tests', '-f', 'json', '-o', 'report-bandit.json']
+
+  # - repo: https://github.com/pylint-dev/pylint
+  #   rev: v3.0.3  # Use the latest version
+  #   hooks:
+  #     - id: pylint
+
+  # - repo: local
+  #   hooks:
+  #     - id: pytest
+  #       name: pytest
+  #       entry: pytest
+  #       language: system
+  #       types: [python]
+
+  # - repo: https://github.com/myint/docformatter
+  #   rev: v1.7.5  # Use the latest version
+  #   hooks:
+  #     - id: docformatter
+  #       args: [--in-place]

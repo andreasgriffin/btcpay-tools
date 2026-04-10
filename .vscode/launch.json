@@ -1,0 +1,75 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "BTCPay NIP-17 Daemon Mainnet",
+      "type": "python",
+      "request": "launch",
+      "module": "btcpay_tools.btcpay_subscription_nostr.daemon",
+      "args": [
+        "--config",
+        "btcpay_subscription_nostr.mainnet.yaml",
+        "run"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Poetry Install"
+    },
+    {
+      "name": "BTCPay NIP-17 Daemon (Testnet Demo)",
+      "type": "python",
+      "request": "launch",
+      "module": "btcpay_tools.btcpay_subscription_nostr.daemon",
+      "args": [
+        "--config",
+        "btcpay_subscription_nostr.testnet.demo.yaml",
+        "run"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Poetry Install"
+    },
+    {
+      "name": "BTCPay NIP-17 Client Start (Testnet Demo)",
+      "type": "python",
+      "request": "launch",
+      "module": "btcpay_tools.btcpay_subscription_nostr.client",
+      "args": [
+        "--config",
+        "btcpay_subscription_nostr.testnet.demo.yaml",
+        "start",
+        "--to-be-signed",
+        "test message",
+        "--product",
+        "demo-plugin"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Poetry Install"
+    },
+    {
+        "name": "Python: Pytest",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "pytest",
+        "args": [
+            "-vvv",
+            "--log-cli-level=0"
+        ],
+        "console": "integratedTerminal",
+        "preLaunchTask": "Poetry Install"
+    },
+    {
+      "name": "BTCPay NIP-17 Generate Keypair  (CAREFULL!!!)",
+      "type": "python",
+      "request": "launch",
+      "module": "btcpay_tools.btcpay_subscription_nostr.daemon",
+      "args": [
+        "generate-nostr-keypair"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Poetry Install"
+    }
+  ]
+}
