@@ -9,6 +9,7 @@ from datetime import timedelta
 from typing import Any, cast
 
 from bitcoin_safe_lib.async_tools.loop_in_thread import LoopInThread, MultipleStrategy
+from bitcoin_nostr_chat.default_relays import get_preferred_relays
 from nostr_sdk import (
     Client,
     Event,
@@ -26,13 +27,6 @@ from nostr_sdk import (
 )
 
 
-NOSTR_RELAYS = (
-    "wss://relay.primal.net",
-    "wss://relay.damus.io",
-    "wss://nostr-01.yakihonne.com",
-)
-
-
 @dataclass(frozen=True)
 class NostrIdentity:
     nsec: str
@@ -41,7 +35,7 @@ class NostrIdentity:
 
 @dataclass(frozen=True)
 class Nip17TransportConfig:
-    relays: tuple[str, ...] = NOSTR_RELAYS
+    relays: tuple[str, ...] = tuple(get_preferred_relays())
     lookback_seconds: int = 60
     subscription_id: str = "btcpay-subscription-management"
     replay_timeout_seconds: int = 5
