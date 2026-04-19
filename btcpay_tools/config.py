@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import enum
-from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -16,11 +15,6 @@ from pydantic import (
 import logging
 
 logger = logging.getLogger(__file__)
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
-    import tomli as tomllib  # type: ignore
 
 
 class PlanDuration(str, enum.Enum):
@@ -177,14 +171,6 @@ class BTCPayConfig(ConfigModel):
         return Path("btcpay_subscription_nostr.local.yaml")
 
     @classmethod
-    def load_plugin_btcpay_config(
-        cls, module_file: Path | str, package_name: str
-    ) -> BTCPayConfig:
-        return _load_plugin_btcpay_config(
-            cls, module_file=module_file, package_name=package_name
-        )
-
-    @classmethod
     def load(cls, source: Path | str) -> BTCPayConfig:
         if isinstance(source, Path):
             return cls.load_file(source)
@@ -219,48 +205,3 @@ class BTCPayConfig(ConfigModel):
     @property
     def data(self) -> dict[str, Any]:
         return self.model_dump(mode="python", by_alias=True)
-
-
-def _load_btcpay_config_from_mapping(
-    config_cls: type[BTCPayConfig], data: Any, source_path: Path
-) -> BTCPayConfig:
-    if not isinstance(data, dict):
-        raise RuntimeError(f"{source_path} must contain a mapping")
-
-    btcpay_data = data.get("btcpay")
-    if not isinstance(btcpay_data, dict):
-        raise RuntimeError(f"{source_path} must define a 'btcpay' mapping")
-
-    try:
-        return config_cls.model_validate(btcpay_data)
-    except ValidationError as exc:
-        raise RuntimeError(f"{source_path} has invalid 'btcpay' config: {exc}") from exc
-
-
-@cache
-def _load_plugin_btcpay_config(
-    config_cls: type[BTCPayConfig], module_file: Path | str, package_name: str
-) -> BTCPayConfig:
-    module_path = Path(module_file).resolve()
-    package_dir = module_path.parent
-    plugin_manifest_path = package_dir / "plugin.yaml"
-    if plugin_manifest_path.is_file():
-        manifest_data = yaml.safe_load(plugin_manifest_path.read_text(encoding="utf-8"))
-        return _load_btcpay_config_from_mapping(
-            config_cls, manifest_data, plugin_manifest_path
-        )
-
-    pyproject_path = package_dir.parent / "pyproject.toml"
-    if pyproject_path.is_file():
-        pyproject_data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-        plugin_data = (
-            pyproject_data.get("tool", {}).get("bitcoin_safe", {}).get("plugin")
-            if isinstance(pyproject_data, dict)
-            else None
-        )
-        return _load_btcpay_config_from_mapping(config_cls, plugin_data, pyproject_path)
-
-    raise RuntimeError(
-        f"Could not locate BTCPay config for {package_name}. "
-        f"Expected {plugin_manifest_path} or {pyproject_path}."
-    )
