@@ -129,6 +129,12 @@ class BTCPayConfig(ConfigModel):
             for subscription_id, subscription in self.iter_subscription_products()
         }
 
+    def plans(self, product_id: str) -> tuple[SubscriptionProduct, ...]:
+        subscriptions = self.products.get(product_id)
+        if subscriptions is None:
+            raise KeyError(product_id)
+        return tuple(subscriptions)
+
     def resolve_subscription(
         self,
         product_id: str,
@@ -152,6 +158,13 @@ class BTCPayConfig(ConfigModel):
         raise ValueError(
             f"Product {product_id!r} has no {resolved_duration.value!r} subscription"
         )
+
+    def subscription_pos_base_url(self) -> str:
+        return self.btcpay_base.subscription_pos_base_url()
+
+    @property
+    def npub_bitcoin_safe_pos(self) -> str:
+        return self.client.npub_bitcoin_safe_pos
 
     @classmethod
     def default_local_path(cls) -> Path:

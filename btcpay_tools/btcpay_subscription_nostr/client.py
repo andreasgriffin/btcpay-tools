@@ -123,11 +123,6 @@ def build_client(
             pos_app_id=args.pos_app_id,
             store_id=base_config.store_id,
         ).subscription_pos_base_url()
-    npub_bitcoin_safe_pos = config.client.npub_bitcoin_safe_pos
-    if npub_bitcoin_safe_pos is None:
-        raise SystemExit(
-            "Missing client.npub_bitcoin_safe_pos. Add it to config before starting a purchase."
-        )
     return SubscriptionPurchaseClient(
         pos_base_url,
         product.trial_pos_id,
@@ -136,7 +131,7 @@ def build_client(
             message_to_be_signed=args.to_be_signed or None,
             receipt_data=config.client.receipt_data,
         ),
-        npub_bitcoin_safe_pos,
+        config.npub_bitcoin_safe_pos,
     )
 
 

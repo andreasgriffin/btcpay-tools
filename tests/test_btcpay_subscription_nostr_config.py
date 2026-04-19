@@ -315,6 +315,30 @@ client:
     assert set(config.subscription_products()) == {"plan123", "plan456"}
 
 
+def test_btcpay_config_exposes_product_plans_and_client_helpers() -> None:
+    config = BTCPayConfig.load(
+        """
+btcpay_base:
+  base_url: https://example.com/
+  pos_app_id: pos123
+  store_id: store123
+products:
+  demo:
+    - offering_id: offering123
+      plan_id: plan123
+      pos_id: demo-paid-pos
+      trial_pos_id: demo-trial-pos
+      duration: month
+client:
+  npub_bitcoin_safe_pos: npub1example
+"""
+    )
+
+    assert config.plans("demo")[0].plan_id == "plan123"
+    assert config.subscription_pos_base_url() == "https://example.com/apps/pos123/pos"
+    assert config.npub_bitcoin_safe_pos == "npub1example"
+
+
 def test_client_status_parse_args_does_not_require_products(tmp_path: Path) -> None:
     config_path = write_config(
         tmp_path,
