@@ -189,7 +189,9 @@ class Nip17Transport:
             )
             return bool(output.success)
         except asyncio.TimeoutError as exc:
-            raise RuntimeError("Timed out sending a NIP-17 management message") from exc
+            raise asyncio.TimeoutError(
+                "Timed out sending a NIP-17 management message"
+            ) from exc
         finally:
             await client.shutdown()
 
@@ -255,7 +257,7 @@ class Nip17Transport:
             )
             return await asyncio.wait_for(result_future, timeout=timeout_seconds)
         except asyncio.TimeoutError as exc:
-            raise RuntimeError(
+            raise asyncio.TimeoutError(
                 "Timed out waiting for a NIP-17 management message"
             ) from exc
         finally:
