@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
 import requests
+import json
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,20 @@ class _PosPageParser(HTMLParser):
         self._current_item_depth: int | None = None
         self.items: list[_ParsedPosItem] = []
 
+        # Newer BTCPay POS pages render a Vue template and put the real item
+        # data inside: const srvModel = { ... };
+        self._script_depth: int | None = None
+        self._script_parts: list[str] = []
+
+    def feed(self, data: str) -> None:
+        super().feed(data)
+
+        # Prefer the concrete Vue model items when present. The HTML card
+        # content only contains placeholders such as {{ item.title }}.
+        srv_model_items = self._parse_srv_model_items("".join(self._script_parts))
+        if srv_model_items:
+            self.items = srv_model_items
+
     def handle_starttag(
         self,
         tag: str,
@@ -74,6 +89,10 @@ class _PosPageParser(HTMLParser):
     ) -> None:
         self._stack.append(tag)
         depth = len(self._stack)
+
+        if tag == "script":
+            self._script_depth = depth
+
         attr_map = {key: value for key, value in attrs}
         classes = _classes(attr_map)
 
@@ -102,26 +121,34 @@ class _PosPageParser(HTMLParser):
             self._start_capture(depth, tag, "price")
             return
 
-        if tag == "button" and attr_map.get("type") == "submit":
+        if tag == "button" and attr_map.get("type") in {"submit", "button", None}:
             self._start_capture(depth, tag, "button")
 
     def handle_data(self, data: str) -> None:
+        if self._script_depth is not None:
+            self._script_parts.append(data)
+
         if self._current_item is None or self._capture_target is None:
             return
+
         text = _normalize_text(data)
         if not text:
             return
+
         if self._capture_target == "title":
             self._current_item.title_parts.append(text)
             return
+
         if self._capture_target == "price":
             self._current_item.price_parts.append(text)
             return
+
         if self._capture_target == "button":
             self._current_item.button_parts.append(text)
 
     def handle_endtag(self, tag: str) -> None:
         depth = len(self._stack)
+
         if (
             self._current_item is not None
             and self._current_item_depth is not None
@@ -140,6 +167,13 @@ class _PosPageParser(HTMLParser):
         ):
             self._clear_capture()
 
+        if (
+            self._script_depth is not None
+            and tag == "script"
+            and self._script_depth == depth
+        ):
+            self._script_depth = None
+
         if self._stack:
             self._stack.pop()
 
@@ -152,6 +186,101 @@ class _PosPageParser(HTMLParser):
         self._capture_depth = None
         self._capture_tag = None
         self._capture_target = None
+
+    def _parse_srv_model_items(self, script_text: str) -> list[_ParsedPosItem]:
+        raw_model = self._extract_js_object_after_marker(
+            script_text, "const srvModel ="
+        )
+        if raw_model is None:
+            return []
+
+        try:
+            model = json.loads(raw_model)
+        except json.JSONDecodeError:
+            return []
+
+        app_id = model.get("appId")
+        form_action = f"/apps/{app_id}/pos" if app_id else None
+
+        parsed_items: list[_ParsedPosItem] = []
+
+        for item in model.get("items", []):
+            item_id = item.get("id")
+            title = item.get("title")
+            price_formatted = item.get("priceFormatted")
+            button_text = item.get("buttonText")
+
+            parsed = _ParsedPosItem(
+                card_id=f"card_{item_id}" if item_id else None,
+            )
+
+            if title is not None:
+                parsed.title_parts.append(str(title))
+
+            if price_formatted is not None:
+                parsed.price_parts.append(str(price_formatted))
+
+            if button_text is not None:
+                parsed.button_parts.append(str(button_text))
+
+            parsed.choice_key = str(item_id) if item_id is not None else None
+            parsed.form_action = form_action
+            parsed.is_free = (
+                item.get("hasPrice") is False
+                or str(price_formatted or "").strip().lower() == "free"
+                or str(item.get("price") or "").strip() == "0"
+            )
+
+            parsed_items.append(parsed)
+
+        return parsed_items
+
+    def _extract_js_object_after_marker(
+        self,
+        text: str,
+        marker: str,
+    ) -> str | None:
+        marker_pos = text.find(marker)
+        if marker_pos == -1:
+            return None
+
+        start = text.find("{", marker_pos)
+        if start == -1:
+            return None
+
+        depth = 0
+        in_string = False
+        quote_char: str | None = None
+        escape = False
+
+        for pos in range(start, len(text)):
+            ch = text[pos]
+
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == quote_char:
+                    in_string = False
+                    quote_char = None
+                continue
+
+            if ch in {"'", '"'}:
+                in_string = True
+                quote_char = ch
+                continue
+
+            if ch == "{":
+                depth += 1
+                continue
+
+            if ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : pos + 1]
+
+        return None
 
 
 def _classes(attrs: dict[str, str | None]) -> set[str]:
