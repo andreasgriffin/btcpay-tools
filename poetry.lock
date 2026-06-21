@@ -55,7 +55,7 @@ files = [
 
 [[package]]
 name = "bitcoin-nostr-chat"
-version = "2.1.2"
+version = "2.1.6"
 description = "A Nostr Chat with participant discovery"
 optional = false
 python-versions = ">=3.10,<3.13"
@@ -64,7 +64,7 @@ files = []
 develop = false
 
 [package.dependencies]
-bitcoin-qr-tools = {git = "https://github.com/andreasgriffin/bitcoin-qr-tools.git", branch = "main"}
+bitcoin-qr-tools = {git = "https://github.com/andreasgriffin/bitcoin-qr-tools.git", branch = "ait-for-mac-permission"}
 bitcoin-safe-lib = {git = "https://github.com/andreasgriffin/bitcoin-safe-lib.git", branch = "main"}
 cbor2 = "^5.6.3"
 nostr-sdk = "^0.44.0"
@@ -74,12 +74,12 @@ requests = "^2.31.0"
 [package.source]
 type = "git"
 url = "https://github.com/andreasgriffin/bitcoin-nostr-chat.git"
-reference = "main"
-resolved_reference = "66f53ca28ffe56b189242e0e509d882cf28fa456"
+reference = "ait-for-mac-permission"
+resolved_reference = "9d8998bbdc858bea9135cbbea825709fb105b8dc"
 
 [[package]]
 name = "bitcoin-qr-tools"
-version = "3.0.1"
+version = "3.2.0"
 description = "Python bitcoin qr reader and generator"
 optional = false
 python-versions = ">=3.10,<3.13"
@@ -104,8 +104,8 @@ segno = "1.6.1"
 [package.source]
 type = "git"
 url = "https://github.com/andreasgriffin/bitcoin-qr-tools.git"
-reference = "main"
-resolved_reference = "fe2e61ef380e8e7aa5c2918d731ef2d1b81c9cda"
+reference = "ait-for-mac-permission"
+resolved_reference = "afeb6f825c82653d30973c6152c260b261992579"
 
 [[package]]
 name = "bitcoin-safe-lib"
@@ -1681,4 +1681,4 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "9415dbafdb9554c50626500872506520485471e1f22558fdc290d62991b2a00a"
+content-hash = "b9452208dc080025b30232ed9b1d88ffed12a7726d10c424e693c068743bcfae"

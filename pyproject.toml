@@ -12,7 +12,7 @@ requires-python = ">=3.10,<3.13"
 PyYAML = "^6.0.2"
 requests = "^2.32.3"
 bitcoin-safe-lib = { git = "https://github.com/andreasgriffin/bitcoin-safe-lib.git", branch = "main" }
-bitcoin-nostr-chat =  { git = "https://github.com/andreasgriffin/bitcoin-nostr-chat.git", branch = "main"  }
+bitcoin-nostr-chat =  { git = "https://github.com/andreasgriffin/bitcoin-nostr-chat.git", branch = "ait-for-mac-permission"  }
 pydantic = "^2.10.6"
 
 [tool.poetry.group.dev.dependencies]
