@@ -69,6 +69,9 @@ def test_parse_trial_status() -> None:
         <a class="suspend-subscriber-link dropdown-item">Suspend Access</a>
       </form>
     </span>
+    <span class="customer-contact-Email">
+      <i class="fa fa-envelope"></i><span>subscriber@example.com</span>
+    </span>
     <input type="checkbox" id="autoRenewal" checked>
     """
 
@@ -78,6 +81,18 @@ def test_parse_trial_status() -> None:
     assert status.phase == SubscriptionManagementPhase.TRIAL
     assert status.is_active is True
     assert status.auto_renew is True
+    assert status.subscriber_email == "subscriber@example.com"
+
+
+def test_parse_status_without_subscriber_email() -> None:
+    html = """
+    <h5><span data-testid="plan-name">Pro</span></h5>
+    <span class="subscriber-status text-bg-success"></span>
+    """
+
+    status = SubscriptionManagementClient.parse_management_page_status(html)
+
+    assert status.subscriber_email is None
 
 
 def test_parse_suspended_status() -> None:

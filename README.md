@@ -59,7 +59,7 @@ poetry run python -m btcpay_tools.btcpay_subscription_nostr.client status --mana
 This prints JSON, for example:
 
 ```json
-{"status": "active", "phase": "normal", "is_active": true, "is_suspended": false, "pending_invoice": false, "payment_due": false, "upgrade_required": false, "auto_renew": true}
+{"status": "active", "phase": "normal", "is_active": true, "is_suspended": false, "pending_invoice": false, "payment_due": false, "upgrade_required": false, "auto_renew": true, "subscriber_email": "user@example.com"}
 ```
 
 If your YAML file is in a different location, pass it explicitly:

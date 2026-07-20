@@ -84,6 +84,7 @@ class SubscriptionManagementStatus:
     upgrade_required: bool = False
     auto_renew: bool | None = None
     http_status: int | None = None
+    subscriber_email: str | None = None
 
 
 def _invoice_created_time(invoice: dict[str, object]) -> int:
@@ -132,8 +133,11 @@ class SubscriptionManagementClient:
             self._h5_depths: list[int] = []
             self._plan_heading_depth: int | None = None
             self._subscriber_status_depth: int | None = None
+            self._subscriber_email_depth: int | None = None
+            self._subscriber_email_parts: list[str] = []
 
             self.saw_portal_marker = False
+            self.subscriber_email: str | None = None
             self.subscriber_status_theme: str | None = None
             self.subscriber_status_has_unsuspend = False
             self.plan_heading_badges: list[
@@ -167,6 +171,12 @@ class SubscriptionManagementClient:
                 )
                 self.saw_portal_marker = True
 
+            if "customer-contact-email" in {
+                css_class.casefold() for css_class in classes
+            }:
+                self._subscriber_email_depth = depth
+                self._subscriber_email_parts = []
+
             if (
                 self._plan_heading_depth is not None
                 and depth > self._plan_heading_depth
@@ -191,6 +201,10 @@ class SubscriptionManagementClient:
                 self.auto_renew = "checked" in attr_map
                 self.saw_portal_marker = True
 
+        def handle_data(self, data: str) -> None:
+            if self._subscriber_email_depth is not None:
+                self._subscriber_email_parts.append(data)
+
         def handle_endtag(self, tag: str) -> None:
             depth = len(self._stack)
 
@@ -199,6 +213,15 @@ class SubscriptionManagementClient:
                 and depth == self._subscriber_status_depth
             ):
                 self._subscriber_status_depth = None
+
+            if (
+                self._subscriber_email_depth is not None
+                and depth == self._subscriber_email_depth
+            ):
+                subscriber_email = "".join(self._subscriber_email_parts).strip()
+                self.subscriber_email = subscriber_email or None
+                self._subscriber_email_depth = None
+                self._subscriber_email_parts = []
 
             if (
                 self._plan_heading_depth is not None
@@ -322,6 +345,7 @@ class SubscriptionManagementClient:
             payment_due=payment_due,
             upgrade_required=upgrade_required,
             auto_renew=parser.auto_renew,
+            subscriber_email=parser.subscriber_email,
         )
 
     def _get_management_status(
