@@ -39,6 +39,7 @@ class Nip17TransportConfig:
     lookback_seconds: int = 60
     subscription_id: str = "btcpay-subscription-management"
     replay_timeout_seconds: int = 5
+    connect_timeout_seconds: int = 10
 
 
 class _NotificationHandler(HandleNotification):
@@ -99,6 +100,8 @@ class Nip17Transport:
         self.loop_in_thread = loop_in_thread or self._shared_loop()
         self._ensure_uniffi_loop(self.loop_in_thread)
         self._gift_wrap_kind = Kind.from_std(KindStandard.GIFT_WRAP)
+        self._sender_clients: dict[str, Client] = {}
+        self._sender_lock = asyncio.Lock()
 
     @classmethod
     def _shared_loop(cls) -> LoopInThread:
@@ -169,6 +172,13 @@ class Nip17Transport:
         await client.connect()
         return client, keys, signer, relay_urls
 
+    async def _sender_client(self, sender_nsec: str) -> Client:
+        async with self._sender_lock:
+            if sender_nsec not in self._sender_clients:
+                client, _, _, _ = await self._build_client(sender_nsec)
+                self._sender_clients[sender_nsec] = client
+            return self._sender_clients[sender_nsec]
+
     async def _send_text(
         self,
         sender_nsec: str,
@@ -176,24 +186,34 @@ class Nip17Transport:
         message: str,
         timeout_seconds: int,
     ) -> bool:
-        client, _, _, relay_urls = await self._build_client(sender_nsec)
+        client = await self._sender_client(sender_nsec)
         try:
-            await client.wait_for_connection(timedelta(seconds=timeout_seconds))
+            await client.wait_for_connection(
+                timedelta(seconds=self.config.connect_timeout_seconds)
+            )
             output = await asyncio.wait_for(
                 client.send_private_msg_to(
-                    relay_urls,
+                    self._relay_urls(),
                     PublicKey.parse(recipient_npub),
                     message,
                 ),
                 timeout=timeout_seconds,
             )
-            return bool(output.success)
         except asyncio.TimeoutError as exc:
             raise asyncio.TimeoutError(
                 "Timed out sending a NIP-17 management message"
             ) from exc
-        finally:
-            await client.shutdown()
+        return bool(output.success)
+
+    def close(self) -> None:
+        self.loop_in_thread.run_foreground(self._shutdown_sender_clients())
+
+    async def _shutdown_sender_clients(self) -> None:
+        clients = list(self._sender_clients.values())
+        self._sender_clients.clear()
+        for client in clients:
+            with suppress(Exception):
+                await client.shutdown()
 
     def receive_text_background(
         self,

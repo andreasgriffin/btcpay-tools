@@ -48,6 +48,8 @@ import logging
 logger = logging.getLogger(__file__)
 
 MAX_NETWORK_TIMEOUT_SECONDS = 60
+DELIVERY_RETRY_BASE_SECONDS = 30
+DELIVERY_RETRY_MAX_SECONDS = 1800
 T = TypeVar("T")
 
 
@@ -528,7 +530,7 @@ class SubscriptionDaemon:
         pos_base_url: str | None,
         portal_duration_minutes: int,
         delivery_timeout_seconds: int,
-        max_delivery_attempts: int,
+        delivery_alert_attempts: int,
         initial_lookback_seconds: int,
         reuse_existing_subscriber_by_email: bool = True,
         sender_nsec: str | None = None,
@@ -547,7 +549,7 @@ class SubscriptionDaemon:
         self.pos_base_url = pos_base_url
         self.portal_duration_minutes = portal_duration_minutes
         self.delivery_timeout_seconds = delivery_timeout_seconds
-        self.max_delivery_attempts = max(0, max_delivery_attempts)
+        self.delivery_alert_attempts = max(0, delivery_alert_attempts)
         self.initial_lookback_seconds = initial_lookback_seconds
         self.reuse_existing_subscriber_by_email = reuse_existing_subscriber_by_email
         self.sender_nsec = sender_nsec
@@ -556,12 +558,15 @@ class SubscriptionDaemon:
         self.startup_initialized = False
 
     def run_forever(self, poll_seconds: int, page_size: int, max_pages: int) -> None:
-        while True:
-            try:
-                self.poll_once(page_size=page_size, max_pages=max_pages)
-            except Exception as exc:
-                log(f"WARN: poll failed: {exc}")
-            time.sleep(max(1, poll_seconds))
+        try:
+            while True:
+                try:
+                    self.poll_once(page_size=page_size, max_pages=max_pages)
+                except Exception as exc:
+                    log(f"WARN: poll failed: {exc}")
+                time.sleep(max(1, poll_seconds))
+        finally:
+            self.transport.close()
 
     def poll_once(self, page_size: int, max_pages: int) -> None:
         if not self.startup_initialized:
@@ -1020,10 +1025,7 @@ class SubscriptionDaemon:
             self._finalize_delivery_future(order_id, order_state, pending_future)
             if order_id in self.delivery_futures or order_state.is_delivered():
                 return
-        if (
-            self.max_delivery_attempts > 0
-            and order_state.delivery_attempts >= self.max_delivery_attempts
-        ):
+        if not self._retry_due(order_state):
             return
         recipient_npub = order_state.origin_npub
         if recipient_npub is None:
@@ -1057,29 +1059,48 @@ class SubscriptionDaemon:
         self.delivery_futures.pop(order_id, None)
         try:
             delivered = delivery_future.result()
-        except RuntimeError as exc:
-            log(f"WARN: NIP-17 delivery failed for {order_id}: {exc}")
+        except asyncio.TimeoutError as exc:
+            self._record_delivery_failure(order_id, order_state, f"timed out: {exc}")
             return
         except Exception as exc:
-            log(f"WARN: Unexpected NIP-17 delivery failure for {order_id}: {exc}")
+            self._record_delivery_failure(order_id, order_state, f"failed: {exc}")
             return
         if not delivered:
-            if (
-                self.max_delivery_attempts > 0
-                and order_state.delivery_attempts >= self.max_delivery_attempts
-            ):
-                log(
-                    f"WARN: No relay accepted the NIP-17 message for {order_id}; "
-                    f"stopping after {order_state.delivery_attempts} attempts"
-                )
-                return
-            log(
-                f"No relay accepted the NIP-17 message for {order_id}; will retry on the next poll"
+            self._record_delivery_failure(
+                order_id, order_state, "was not accepted by any relay"
             )
             return
         order_state.delivered_at = int(time.time())
         self.state.save()
         log(f"Delivered portal for {order_id}: {order_state.portal_url}")
+
+    def _retry_due(self, order_state: ProcessedOrderState) -> bool:
+        if (
+            order_state.delivery_attempts == 0
+            or order_state.last_delivery_attempt_at is None
+        ):
+            return True
+        backoff_seconds = min(
+            DELIVERY_RETRY_BASE_SECONDS * 2 ** (order_state.delivery_attempts - 1),
+            DELIVERY_RETRY_MAX_SECONDS,
+        )
+        return time.time() >= order_state.last_delivery_attempt_at + backoff_seconds
+
+    def _record_delivery_failure(
+        self,
+        order_id: str,
+        order_state: ProcessedOrderState,
+        reason: str,
+    ) -> None:
+        attempts = order_state.delivery_attempts
+        log(
+            f"WARN: NIP-17 delivery for {order_id} {reason}; attempt {attempts}, will retry"
+        )
+        if attempts == self.delivery_alert_attempts:
+            log(
+                f"ALERT: NIP-17 delivery for {order_id} still undelivered "
+                f"after {attempts} attempts"
+            )
 
     def _message_to_be_signed(
         self,

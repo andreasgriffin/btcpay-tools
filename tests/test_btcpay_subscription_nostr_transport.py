@@ -17,16 +17,14 @@ def test_send_text_times_out() -> None:
     client.wait_for_connection = AsyncMock()
     client.send_private_msg_to = AsyncMock(side_effect=_sleep_forever)
     client.shutdown = AsyncMock()
-    signer = Mock()
-    relay_urls = [RelayUrl.parse("wss://relay.primal.net")]
 
     with patch.object(
         transport,
         "_build_client",
-        AsyncMock(return_value=(client, sender_keys, signer, relay_urls)),
+        AsyncMock(return_value=(client, sender_keys, Mock(), [])),
     ):
         with pytest.raises(
-            RuntimeError,
+            asyncio.TimeoutError,
             match="Timed out sending a NIP-17 management message",
         ):
             transport.send_text_background(
@@ -36,6 +34,34 @@ def test_send_text_times_out() -> None:
                 timeout_seconds=1,
             ).result(timeout=3)
 
+    client.shutdown.assert_not_awaited()
+
+
+def test_send_text_reuses_sender_client_and_close_shuts_it_down() -> None:
+    transport = Nip17Transport()
+    sender_keys = Keys.generate()
+    recipient_keys = Keys.generate()
+    client = AsyncMock()
+    client.wait_for_connection = AsyncMock()
+    client.send_private_msg_to = AsyncMock(return_value=Mock(success=True))
+    client.shutdown = AsyncMock()
+    build_client = AsyncMock(return_value=(client, sender_keys, Mock(), []))
+
+    with patch.object(transport, "_build_client", build_client):
+        for _ in range(2):
+            assert (
+                transport.send_text_background(
+                    sender_nsec=sender_keys.secret_key().to_bech32(),
+                    recipient_npub=recipient_keys.public_key().to_bech32(),
+                    message="hello",
+                    timeout_seconds=1,
+                ).result(timeout=3)
+                is True
+            )
+        transport.close()
+
+    build_client.assert_awaited_once()
+    assert client.send_private_msg_to.await_count == 2
     client.shutdown.assert_awaited_once()
 
 
@@ -60,7 +86,7 @@ def test_receive_text_times_out() -> None:
         patch.object(transport, "_replay_recent_events", AsyncMock()),
     ):
         with pytest.raises(
-            RuntimeError,
+            asyncio.TimeoutError,
             match="Timed out waiting for a NIP-17 management message",
         ):
             transport.receive_text_background(

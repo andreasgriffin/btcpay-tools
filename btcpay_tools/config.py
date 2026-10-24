@@ -58,9 +58,11 @@ class DaemonConfig(ConfigModel):
     poll_seconds: int = 10
     http_timeout_seconds: int = 20
     portal_duration_minutes: int = 1440
-    max_delivery_attempts: int = 10
+    delivery_alert_attempts: int = 10
     initial_lookback_seconds: int = 0
-    delivery_timeout_seconds: int = 5
+    delivery_timeout_seconds: int = 30
+    relay_connect_timeout_seconds: int = 10
+    nostr_relays: list[str] | None = None
     max_pages: int = 5
     state_file: Path = Path("btcpay_tools/btcpay_subscription_nostr/daemon.state.json")
     reuse_existing_subscriber_by_email: bool = True
