@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import time
 from concurrent.futures import Future
 from pathlib import Path
 from typing import TypeVar
@@ -397,13 +398,10 @@ def resolved_future(value: T) -> Future[T]:
     return future
 
 
-def test_deliver_order_stops_after_max_attempts() -> None:
+def test_deliver_order_retries_with_backoff_and_alerts_at_threshold() -> None:
     state = Mock()
     transport = Mock()
-    transport.send_text_background.side_effect = [
-        resolved_future(False),
-        resolved_future(False),
-    ]
+    transport.send_text_background.return_value = resolved_future(False)
     order_state = ProcessedOrderState(
         product_id="paid",
         plan_id="paid-plan",
@@ -417,8 +415,8 @@ def test_deliver_order_stops_after_max_attempts() -> None:
         products={},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec="nsec1sender",
         transport=transport,
@@ -426,13 +424,95 @@ def test_deliver_order_stops_after_max_attempts() -> None:
 
     with patch("btcpay_tools.btcpay_subscription_nostr.service.log") as mocked_log:
         daemon._deliver_order("order-123", order_state)
+        daemon._finalize_delivery_future(
+            "order-123", order_state, daemon.delivery_futures["order-123"]
+        )
+        order_state.last_delivery_attempt_at = 0
         daemon._deliver_order("order-123", order_state)
+        daemon._finalize_delivery_future(
+            "order-123", order_state, daemon.delivery_futures["order-123"]
+        )
+        order_state.last_delivery_attempt_at = 0
         daemon._deliver_order("order-123", order_state)
 
-    assert transport.send_text_background.call_count == 2
-    assert order_state.delivery_attempts == 2
+    assert transport.send_text_background.call_count == 3
+    assert order_state.delivery_attempts == 3
     logged_messages = [call.args[0] for call in mocked_log.call_args_list]
-    assert any("stopping after 2 attempts" in message for message in logged_messages)
+    assert any(
+        "ALERT" in message and "after 2 attempts" in message
+        for message in logged_messages
+    )
+    assert not any("stopping" in message for message in logged_messages)
+
+
+def test_deliver_order_waits_for_backoff_before_retrying() -> None:
+    transport = Mock()
+    transport.send_text_background.return_value = resolved_future(False)
+    order_state = ProcessedOrderState(
+        product_id="paid",
+        plan_id="paid-plan",
+        customer_selector="customer-1",
+        portal_url="https://example.com/portal",
+        origin_npub="npub1recipient",
+        delivery_attempts=1,
+        last_delivery_attempt_at=int(time.time()),
+    )
+    daemon = SubscriptionDaemon(
+        btcpay=Mock(),
+        state=Mock(),
+        products={},
+        pos_base_url=None,
+        portal_duration_minutes=60,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=10,
+        initial_lookback_seconds=60,
+        sender_nsec="nsec1sender",
+        transport=transport,
+    )
+
+    daemon._deliver_order("order-123", order_state)
+
+    transport.send_text_background.assert_not_called()
+
+
+def test_deliver_order_treats_timeout_as_retryable_failure() -> None:
+    transport = Mock()
+    timed_out: Future[bool] = Future()
+    timed_out.set_exception(asyncio.TimeoutError("Timed out sending"))
+    transport.send_text_background.return_value = timed_out
+    order_state = ProcessedOrderState(
+        product_id="paid",
+        plan_id="paid-plan",
+        customer_selector="customer-1",
+        portal_url="https://example.com/portal",
+        origin_npub="npub1recipient",
+    )
+    daemon = SubscriptionDaemon(
+        btcpay=Mock(),
+        state=Mock(),
+        products={},
+        pos_base_url=None,
+        portal_duration_minutes=60,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=10,
+        initial_lookback_seconds=60,
+        sender_nsec="nsec1sender",
+        transport=transport,
+    )
+
+    with patch("btcpay_tools.btcpay_subscription_nostr.service.log") as mocked_log:
+        daemon._deliver_order("order-123", order_state)
+        daemon._finalize_delivery_future(
+            "order-123", order_state, daemon.delivery_futures["order-123"]
+        )
+
+    assert order_state.delivered_at is None
+    logged_messages = [call.args[0] for call in mocked_log.call_args_list]
+    assert any(
+        "timed out" in message and "will retry" in message
+        for message in logged_messages
+    )
+    assert not any("Unexpected" in message for message in logged_messages)
 
 
 def test_deliver_order_sends_nip17_payload() -> None:
@@ -452,8 +532,8 @@ def test_deliver_order_sends_nip17_payload() -> None:
         products={},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec="nsec1sender",
         transport=transport,
@@ -466,7 +546,7 @@ def test_deliver_order_sends_nip17_payload() -> None:
         sender_nsec="nsec1sender",
         recipient_npub="npub1recipient",
         message=serialize_management_payload(order_state.delivery_payload()),
-        timeout_seconds=5,
+        timeout_seconds=30,
         key="delivery:order-123",
     )
     assert order_state.delivered_at is not None
@@ -485,8 +565,8 @@ def test_create_and_send_portal_persists_origin_npub() -> None:
         products={"paid": product},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec="nsec1sender",
         transport=transport,
@@ -526,8 +606,8 @@ def test_process_order_reuses_existing_subscriber_by_email_when_enabled() -> Non
         products={},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         reuse_existing_subscriber_by_email=True,
         sender_nsec="nsec1sender",
@@ -574,8 +654,8 @@ def test_process_order_reuses_existing_subscriber_with_wrong_plan() -> None:
         products={},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         reuse_existing_subscriber_by_email=True,
         sender_nsec="nsec1sender",
@@ -624,8 +704,8 @@ def test_process_order_uses_separate_offering_for_same_email() -> None:
         products={},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         reuse_existing_subscriber_by_email=True,
         sender_nsec="nsec1sender",
@@ -684,8 +764,8 @@ def test_process_order_uses_origin_npub_from_invoice() -> None:
         products={},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec="nsec1sender",
         transport=transport,
@@ -737,8 +817,8 @@ def test_process_order_does_not_reuse_existing_subscriber_in_activation_fallback
         products={},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         reuse_existing_subscriber_by_email=True,
         sender_nsec="nsec1sender",
@@ -778,8 +858,8 @@ def test_process_order_does_not_reuse_existing_subscriber_in_activation_fallback
         products={},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         reuse_existing_subscriber_by_email=False,
         sender_nsec="nsec1sender",
@@ -823,8 +903,8 @@ def test_product_for_invoice_matches_pos_id() -> None:
         },
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec="nsec1sender",
         transport=Mock(),
@@ -867,8 +947,8 @@ def test_poll_once_processes_settled_invoice_at_watermark_boundary() -> None:
         },
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec="nsec1sender",
         transport=Mock(),
@@ -908,8 +988,8 @@ def test_deliver_pending_orders_logs_and_continues_when_sender_nsec_is_missing()
         products={},
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec=None,
         transport=Mock(),
@@ -960,8 +1040,8 @@ def test_poll_once_continues_processing_invoices_when_pending_delivery_setup_fai
         },
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec=None,
         transport=Mock(),
@@ -1023,8 +1103,8 @@ def test_refresh_pending_invoices_keeps_settled_invoice_when_process_order_fails
         },
         pos_base_url=None,
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec="nsec1sender",
         transport=Mock(),
@@ -1056,8 +1136,8 @@ def test_warn_on_product_price_mismatches_uses_paid_pos_item() -> None:
         },
         pos_base_url="https://example.com/apps/app123/pos",
         portal_duration_minutes=60,
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=60,
         sender_nsec="nsec1sender",
         transport=Mock(),
@@ -1103,8 +1183,8 @@ client:
         http_timeout_seconds=20,
         portal_duration_minutes=60,
         command="run",
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=0,
         reuse_existing_subscriber_by_email=True,
         state_file=tmp_path / "daemon.state.json",
@@ -1167,8 +1247,8 @@ client:
         http_timeout_seconds=20,
         portal_duration_minutes=60,
         command="run",
-        delivery_timeout_seconds=5,
-        max_delivery_attempts=2,
+        delivery_timeout_seconds=30,
+        delivery_alert_attempts=2,
         initial_lookback_seconds=0,
         reuse_existing_subscriber_by_email=False,
         state_file=tmp_path / "daemon.state.json",

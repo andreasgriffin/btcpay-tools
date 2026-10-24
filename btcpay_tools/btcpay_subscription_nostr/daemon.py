@@ -16,9 +16,14 @@ from btcpay_tools.btcpay_subscription_nostr.core import (
     BtcpayConfig,
     PersistentState,
 )
+from btcpay_tools.btcpay_subscription_nostr.nostr_transport import (
+    Nip17Transport,
+    Nip17TransportConfig,
+)
 from btcpay_tools.btcpay_subscription_nostr.service import (
     SubscriptionDaemon,
 )
+from bitcoin_nostr_chat.default_relays import get_preferred_relays
 from nostr_sdk import Keys
 
 
@@ -134,12 +139,12 @@ def parse_args() -> argparse.Namespace:
     run_forever.add_argument(
         "--delivery-timeout-seconds",
         type=int,
-        default=daemon_config.delivery_timeout_seconds if daemon_config else 5,
+        default=daemon_config.delivery_timeout_seconds if daemon_config else 30,
     )
     run_forever.add_argument(
-        "--max-delivery-attempts",
+        "--delivery-alert-attempts",
         type=int,
-        default=daemon_config.max_delivery_attempts if daemon_config else 10,
+        default=daemon_config.delivery_alert_attempts if daemon_config else 10,
     )
 
     process_order = subparsers.add_parser("process-order")
@@ -207,12 +212,12 @@ def build_daemon(args: argparse.Namespace) -> SubscriptionDaemon:
     nsec_bitcoin_safe_pos = daemon_config.nsec_bitcoin_safe_pos
     state = PersistentState(args.state_file)
     state.load()
-    delivery_timeout_seconds = 5
-    max_delivery_attempts = 10
+    delivery_timeout_seconds = daemon_config.delivery_timeout_seconds
+    delivery_alert_attempts = daemon_config.delivery_alert_attempts
     initial_lookback_seconds = 0
     if args.command == "run":
         delivery_timeout_seconds = args.delivery_timeout_seconds
-        max_delivery_attempts = args.max_delivery_attempts
+        delivery_alert_attempts = args.delivery_alert_attempts
         initial_lookback_seconds = args.initial_lookback_seconds
     return SubscriptionDaemon(
         btcpay=build_btcpay_client(args),
@@ -221,10 +226,21 @@ def build_daemon(args: argparse.Namespace) -> SubscriptionDaemon:
         pos_base_url=pos_base_url,
         portal_duration_minutes=args.portal_duration_minutes,
         delivery_timeout_seconds=delivery_timeout_seconds,
-        max_delivery_attempts=max_delivery_attempts,
+        delivery_alert_attempts=delivery_alert_attempts,
         initial_lookback_seconds=initial_lookback_seconds,
         reuse_existing_subscriber_by_email=args.reuse_existing_subscriber_by_email,
         sender_nsec=nsec_bitcoin_safe_pos,
+        transport=build_nip17_transport(daemon_config),
+    )
+
+
+def build_nip17_transport(daemon_config: DaemonConfig) -> Nip17Transport:
+    relays = daemon_config.nostr_relays or list(get_preferred_relays())
+    return Nip17Transport(
+        config=Nip17TransportConfig(
+            relays=tuple(relays),
+            connect_timeout_seconds=daemon_config.relay_connect_timeout_seconds,
+        ),
     )
 
 
