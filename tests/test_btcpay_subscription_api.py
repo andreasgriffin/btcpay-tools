@@ -11,6 +11,7 @@ import pytest
 import requests
 import yaml
 
+from btcpay_tools.btcpay_subscription_api.btcpay_client import derive_subscriber_email
 from btcpay_tools.btcpay_subscription_api.main import (
     ApiConfig,
     ApiError,
@@ -248,6 +249,13 @@ client:
 
     with pytest.raises(ValueError, match="unknown top-level fields"):
         _load_btcpay_config(path)
+
+
+def test_derive_subscriber_email_keeps_only_safe_characters() -> None:
+    assert derive_subscriber_email("Hello World_42!") == (
+        "helloworld42@v0.bitcoin-safe.org"
+    )
+    assert derive_subscriber_email("a-b") == "a-b@v0.bitcoin-safe.org"
 
 
 def test_config_loader_rejects_duplicate_plan_ids(tmp_path: Path) -> None:
