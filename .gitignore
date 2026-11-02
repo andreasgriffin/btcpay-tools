@@ -37,3 +37,7 @@ htmlcov/
 *.json
 *.yaml
 *.yml
+!btcpay_tools/btcpay_subscription_api/compose.yaml
+btcpay_tools/btcpay_subscription_api/.env
+!btcpay_tools/btcpay_subscription_api/.env.example
+btcpay_tools/btcpay_subscription_api/config/
