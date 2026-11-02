@@ -25,6 +25,7 @@ from btcpay_tools.btcpay_subscription_api.btcpay_client import (
 from btcpay_tools.btcpay_subscription_api.models import (
     PlanCatalogItem,
     PlanCatalogResponse,
+    StoreInfoResponse,
     SubscriptionStatusResponse,
 )
 
@@ -37,6 +38,7 @@ MAX_EMAIL_LENGTH = 254
 MANAGEMENT_URL_PATH = "/api/subscriptions/management-url"
 STATUS_PATH = "/api/subscriptions/status"
 CATALOG_PATH = "/api/subscription-plans"
+STORE_PATH = "/api/store"
 
 
 class BtcpayGateway(Protocol):
@@ -428,6 +430,12 @@ class SubscriptionAPI:
         except Exception as exc:
             raise _upstream_error(exc) from None
 
+    def get_store_info(self) -> StoreInfoResponse:
+        return StoreInfoResponse(
+            base_url=self.config.btcpay_base_url,
+            store_id=self.config.store_id,
+        )
+
     def get_catalog(self) -> PlanCatalogResponse:
         ttl = self.config.catalog_cache_ttl_seconds
         with self._catalog_lock:
@@ -617,10 +625,14 @@ class SubscriptionRequestHandler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._send_json(HTTPStatus.OK, {"status": "ok"})
             return
-        if self.path != CATALOG_PATH:
+        if self.path not in {CATALOG_PATH, STORE_PATH}:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
         if not self._allow_global_request():
+            return
+        if self.path == STORE_PATH:
+            store = self.subscription_api.get_store_info()
+            self._send_json(HTTPStatus.OK, store.model_dump(mode="json"))
             return
         try:
             catalog = self.subscription_api.get_catalog()

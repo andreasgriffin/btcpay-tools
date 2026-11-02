@@ -95,6 +95,19 @@ curl http://127.0.0.1:8080/api/subscription-plans
 {"schema_version":1,"plans":[{"plan_id":"plan-x","name":"Monthly","description":"Standard monthly.","price":"19.99","currency":"USD","recurringType":"Monthly","trialDays":14,"gracePeriodDays":7,"status":"Active","features":["feature-analytics"]}]}
 ```
 
+### `GET /api/store`
+
+Returns the BTCPay server base URL and store ID the service is configured for.
+No upstream BTCPay call is made.
+
+```sh
+curl http://127.0.0.1:8080/api/store
+```
+
+```json
+{"schema_version":1,"base_url":"https://btcpay.example.org","store_id":"replace-with-store-id"}
+```
+
 ### `POST /api/subscriptions/status`
 
 Returns the subscription state for one plan. It never returns a portal URL.

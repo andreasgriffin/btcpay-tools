@@ -116,6 +116,14 @@ class PlanCatalogItem(BaseModel):
         return cls.model_validate({**plan, "plan_id": plan_id})
 
 
+class StoreInfoResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    schema_version: int = SCHEMA_VERSION
+    base_url: str
+    store_id: str
+
+
 class PlanCatalogResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
