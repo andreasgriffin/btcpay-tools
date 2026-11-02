@@ -11,13 +11,16 @@ requires-python = ">=3.10,<3.15"
 [tool.poetry.dependencies]
 PyYAML = "^6.0.2"
 requests = "^2.32.3"
-bitcoin-safe-lib = { git = "https://github.com/andreasgriffin/bitcoin-safe-lib.git", branch = "main" }
-bitcoin-nostr-chat =  { git = "https://github.com/andreasgriffin/bitcoin-nostr-chat.git", branch = "main"  }
 pydantic = "^2.10.6"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"
 
+
+[tool.pyright]
+include = ["btcpay_tools", "tests"]
+venvPath = "."
+venv = ".venv"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

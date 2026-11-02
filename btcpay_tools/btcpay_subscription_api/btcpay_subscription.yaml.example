@@ -1,0 +1,33 @@
+btcpay_base:
+  base_url: "https://btcpay.example.org"
+  pos_app_id: "replace-with-pos-app-id"
+  store_id: "replace-with-store-id"
+  api_key: "replace-with-api-key"
+
+products: # Allowlisted subscription plans
+  business-plan:
+    - offering_id: "replace-with-business-offering-id"
+      plan_id: "replace-with-business-plan-id"
+      pos_id: "business-plan"
+      trial_pos_id: "business-plan-trial"
+      duration: "year"
+  schedule:
+    - offering_id: "replace-with-schedule-offering-id"
+      plan_id: "replace-with-schedule-plan-id"
+      pos_id: "schedule"
+      trial_pos_id: "schedule-trial"
+      duration: "year"
+  notifications:
+    - offering_id: "replace-with-notifications-offering-id"
+      plan_id: "replace-with-notifications-monthly-plan-id"
+      pos_id: "notification-monthly"
+      trial_pos_id: "notification-monthly-trial"
+      duration: "month"
+    - offering_id: "replace-with-notifications-offering-id"
+      plan_id: "replace-with-notifications-yearly-plan-id"
+      pos_id: "notification-yearly"
+      trial_pos_id: "notification-yearly-trial"
+      duration: "year"
+
+daemon: # Optional settings reused from the application config
+  portal_duration_minutes: 1440
