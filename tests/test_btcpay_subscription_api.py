@@ -726,6 +726,27 @@ def test_http_status_unknown_plan_returns_404_without_upstream_call() -> None:
         thread.join(timeout=2)
 
 
+def test_http_store_endpoint_returns_base_url_and_store_id() -> None:
+    client = FakeClient()
+    server = create_server(config(), client)
+    thread = _start(server)
+    try:
+        response = requests.get(
+            f"http://127.0.0.1:{server.server_port}/api/store", timeout=2
+        )
+        assert response.status_code == HTTPStatus.OK
+        assert response.json() == {
+            "schema_version": 1,
+            "base_url": "https://btcpay.example.org",
+            "store_id": "store",
+        }
+        assert client.calls == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def _capture_error(errors: list[Exception], operation: Any) -> None:
     try:
         operation()
