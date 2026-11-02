@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 SCHEMA_VERSION = 1
 
 
-class SubscriptionPhase(str, Enum):
+class SubscriptionPhase(Enum):
     """Lifecycle phase; values mirror the Greenfield `SubscriptionPhase` enum."""
 
     EXPIRED = "expired"
@@ -31,7 +31,7 @@ class SubscriptionPhase(str, Enum):
         return cls(raw.lower())
 
 
-class SubscriptionStatusCode(str, Enum):
+class SubscriptionStatusCode(Enum):
     ACTIVE = "active"
     TRIAL = "trial"
     GRACE = "grace"
