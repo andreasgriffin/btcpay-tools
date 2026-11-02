@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import string
 import urllib.parse
 from dataclasses import dataclass
 from typing import Any
@@ -163,6 +164,12 @@ class BtcpayClient:
             body = response.text[:800].replace("\n", " ")
             raise RuntimeError(f"{method} {url} failed: {response.status_code} {body}")
         return response.json()
+
+
+def derive_subscriber_email(message_to_be_signed: str) -> str:
+    allowed = set(string.ascii_lowercase + string.digits + "-")
+    local = "".join(ch for ch in message_to_be_signed.lower() if ch in allowed)
+    return f"{local}@v0.bitcoin-safe.org"
 
 
 def customer_selector_from_checkout(checkout: dict[str, Any]) -> str:
