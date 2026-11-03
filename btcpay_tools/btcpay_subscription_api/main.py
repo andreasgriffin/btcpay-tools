@@ -40,8 +40,6 @@ MANAGEMENT_URL_PATH = "/api/subscriptions/management-url"
 STATUS_PATH = "/api/subscriptions/status"
 CATALOG_PATH = "/api/subscription-plans"
 STORE_PATH = "/api/store"
-HELP_PATH = "/help"
-README_PATH = Path(__file__).with_name("README.md")
 
 
 class BtcpayGateway(Protocol):
@@ -627,9 +625,6 @@ class SubscriptionRequestHandler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._send_json(HTTPStatus.OK, {"status": "ok"})
             return
-        if self.path == HELP_PATH:
-            self._send_text(HTTPStatus.OK, README_PATH.read_text(encoding="utf-8"))
-            return
         if self.path not in {CATALOG_PATH, STORE_PATH}:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
@@ -745,25 +740,8 @@ class SubscriptionRequestHandler(BaseHTTPRequestHandler):
         headers: dict[str, str] | None = None,
     ) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        self._send_body(status, body, "application/json; charset=utf-8", headers)
-
-    def _send_text(self, status: HTTPStatus, text: str) -> None:
-        self._send_body(
-            status,
-            text.encode("utf-8"),
-            "text/markdown; charset=utf-8",
-            None,
-        )
-
-    def _send_body(
-        self,
-        status: HTTPStatus,
-        body: bytes,
-        content_type: str,
-        headers: dict[str, str] | None,
-    ) -> None:
         self.send_response(status)
-        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
