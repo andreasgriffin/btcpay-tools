@@ -30,7 +30,9 @@ from btcpay_tools.btcpay_subscription_api.models import (
 
 
 def config(**overrides: Any) -> ApiConfig:
-    plans = overrides.pop("plans", {"plan-monthly": SubscriptionPlan("offering")})
+    plans = overrides.pop(
+        "plans", {"plan-monthly": SubscriptionPlan("business-plan", "offering", "year")}
+    )
     values: dict[str, Any] = {
         "btcpay_base_url": "https://btcpay.example.org",
         "store_id": "store",
@@ -185,26 +187,19 @@ def test_config_loader_flattens_multiple_products_into_plan_allowlist(
         """
 btcpay_base:
   base_url: https://btcpay.example.org
-  pos_app_id: pos-app
   store_id: store
   api_key: secret-token
 products: # Sample plan catalog
   business-plan:
     - offering_id: offering-business
       plan_id: plan-business
-      pos_id: business
-      trial_pos_id: business-trial
       duration: year
   notifications:
     - offering_id: offering-notifications
       plan_id: plan-notification-month
-      pos_id: notification-month
-      trial_pos_id: notification-month-trial
       duration: month
     - offering_id: offering-notifications
       plan_id: plan-notification-year
-      pos_id: notification-year
-      trial_pos_id: notification-year-trial
       duration: year
 daemon: # Portal settings
   portal_duration_minutes: 720
@@ -219,9 +214,13 @@ daemon: # Portal settings
     assert loaded["api_key"] == "secret-token"
     assert loaded["portal_duration_minutes"] == 720
     assert loaded["plans"] == {
-        "plan-business": SubscriptionPlan("offering-business"),
-        "plan-notification-month": SubscriptionPlan("offering-notifications"),
-        "plan-notification-year": SubscriptionPlan("offering-notifications"),
+        "plan-business": SubscriptionPlan("business-plan", "offering-business", "year"),
+        "plan-notification-month": SubscriptionPlan(
+            "notifications", "offering-notifications", "month"
+        ),
+        "plan-notification-year": SubscriptionPlan(
+            "notifications", "offering-notifications", "year"
+        ),
     }
 
 
@@ -231,15 +230,12 @@ def test_config_loader_rejects_nostr_client_block(tmp_path: Path) -> None:
         """
 btcpay_base:
   base_url: https://btcpay.example.org
-  pos_app_id: pos-app
   store_id: store
   api_key: secret-token
 products:
   business-plan:
     - offering_id: offering-business
       plan_id: plan-business
-      pos_id: business
-      trial_pos_id: business-trial
       duration: year
 client:
   npub_bitcoin_safe_pos: npub-example
@@ -249,6 +245,69 @@ client:
 
     with pytest.raises(ValueError, match="unknown top-level fields"):
         _load_btcpay_config(path)
+
+
+def test_config_loader_rejects_invalid_duration(tmp_path: Path) -> None:
+    path = tmp_path / "btcpay.yaml"
+    path.write_text(
+        """
+btcpay_base:
+  base_url: https://pay.example.org
+  store_id: store
+  api_key: secret-token
+products:
+  business-plan:
+    - offering_id: offering-business
+      plan_id: plan-business
+      duration: yeaar
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid duration"):
+        _load_btcpay_config(path)
+
+
+def test_config_loader_rejects_missing_duration(tmp_path: Path) -> None:
+    path = tmp_path / "btcpay.yaml"
+    path.write_text(
+        """
+btcpay_base:
+  base_url: https://pay.example.org
+  store_id: store
+  api_key: secret-token
+products:
+  business-plan:
+    - offering_id: offering-business
+      plan_id: plan-business
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid fields"):
+        _load_btcpay_config(path)
+
+
+def test_config_loader_accepts_minimal_product_entries(tmp_path: Path) -> None:
+    path = tmp_path / "btcpay.yaml"
+    path.write_text(
+        """
+btcpay_base:
+  base_url: https://pay.example.org
+  store_id: store
+  api_key: secret-token
+products:
+  business-plan:
+    - offering_id: offering-business
+      plan_id: plan-business
+      duration: year
+""",
+        encoding="utf-8",
+    )
+
+    assert _load_btcpay_config(path)["plans"] == {
+        "plan-business": SubscriptionPlan("business-plan", "offering-business", "year"),
+    }
 
 
 def test_derive_subscriber_email_keeps_only_safe_characters() -> None:
@@ -336,8 +395,12 @@ def test_each_allowlisted_plan_uses_its_configured_offering() -> None:
     api = SubscriptionAPI(
         config(
             plans={
-                "plan-monthly": SubscriptionPlan("offering-monthly"),
-                "plan-yearly": SubscriptionPlan("offering-yearly"),
+                "plan-monthly": SubscriptionPlan(
+                    "notifications", "offering-monthly", "month"
+                ),
+                "plan-yearly": SubscriptionPlan(
+                    "notifications", "offering-yearly", "year"
+                ),
             }
         ),
         client,
@@ -636,6 +699,36 @@ def test_status_uses_email_selector_then_raw_email() -> None:
     ]
 
 
+def test_catalog_groups_plans_under_product_name() -> None:
+    client = FakeClient()
+    client.plan_by_id["plan-yearly"] = {
+        **client.plan_by_id["plan-monthly"],
+        "id": "plan-yearly",
+        "name": "Yearly",
+    }
+    api = SubscriptionAPI(
+        config(
+            plans={
+                "plan-monthly": SubscriptionPlan("business", "offering", "month"),
+                "plan-yearly": SubscriptionPlan("business", "offering", "year"),
+            }
+        ),
+        client,
+    )
+
+    catalog = api.get_catalog().model_dump()
+
+    assert list(catalog["plans"]) == ["business"]
+    assert [item["plan_id"] for item in catalog["plans"]["business"]] == [
+        "plan-monthly",
+        "plan-yearly",
+    ]
+    assert [item["duration"] for item in catalog["plans"]["business"]] == [
+        "month",
+        "year",
+    ]
+
+
 def test_catalog_returns_only_configured_plans_and_caches_within_ttl() -> None:
     client = FakeClient()
     client.plan_by_id["plan-other"] = {"id": "plan-other", "name": "Other"}
@@ -644,9 +737,9 @@ def test_catalog_returns_only_configured_plans_and_caches_within_ttl() -> None:
     first = api.get_catalog()
     second = api.get_catalog()
 
-    assert [plan.plan_id for plan in first.plans] == ["plan-monthly"]
-    assert first.plans[0].price == "19.99"
-    assert "memberCount" not in first.model_dump()["plans"][0]
+    assert list(first.plans) == ["business-plan"]
+    assert first.plans["business-plan"][0].price == "19.99"
+    assert "memberCount" not in first.model_dump()["plans"]["business-plan"][0]
     assert second == first
     assert sum(call[0] == "get_offering_plan" for call in client.calls) == 1
 
@@ -696,7 +789,8 @@ def test_http_status_and_catalog_routes_and_rate_limits() -> None:
         catalog = requests.get(f"{address}/api/subscription-plans", timeout=2)
         assert catalog.status_code == HTTPStatus.OK
         assert catalog.json()["schema_version"] == 1
-        assert catalog.json()["plans"][0]["plan_id"] == "plan-monthly"
+        assert list(catalog.json()["plans"]) == ["business-plan"]
+        assert catalog.json()["plans"]["business-plan"][0]["plan_id"] == "plan-monthly"
 
         first = requests.post(
             f"{address}/api/subscriptions/status", json=status_payload, timeout=2

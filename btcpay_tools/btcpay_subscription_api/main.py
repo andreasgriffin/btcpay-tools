@@ -76,7 +76,9 @@ class BtcpayGateway(Protocol):
 
 @dataclass(frozen=True)
 class SubscriptionPlan:
+    product: str
     offering_id: str
+    duration: str
 
 
 @dataclass(frozen=True)
@@ -235,18 +237,15 @@ def _load_btcpay_config(path: Path) -> dict[str, Any]:
     base_url = btcpay_base.get("base_url")
     store_id = btcpay_base.get("store_id")
     api_key = btcpay_base.get("api_key")
-    pos_app_id = btcpay_base.get("pos_app_id")
-    if not all(
-        isinstance(value, str) and value.strip()
-        for value in (base_url, store_id, api_key, pos_app_id)
+    if not (
+        isinstance(base_url, str)
+        and isinstance(store_id, str)
+        and isinstance(api_key, str)
+        and base_url.strip()
+        and store_id.strip()
+        and api_key.strip()
     ):
-        raise ValueError(
-            "btcpay_base must define base_url, pos_app_id, store_id, and api_key"
-        )
-    if not isinstance(base_url, str) or not isinstance(store_id, str):
-        raise ValueError("btcpay_base contains invalid URL or store ID")
-    if not isinstance(api_key, str) or not isinstance(pos_app_id, str):
-        raise ValueError("btcpay_base contains invalid API key or POS app ID")
+        raise ValueError("btcpay_base must define base_url, store_id, and api_key")
     if not isinstance(daemon, dict):
         raise ValueError("daemon must be a YAML mapping")
 
@@ -257,13 +256,7 @@ def _load_btcpay_config(path: Path) -> dict[str, Any]:
         for subscription in subscriptions:
             if not isinstance(subscription, dict):
                 raise ValueError(f"products.{product_name} entries must be mappings")
-            if set(subscription) != {
-                "offering_id",
-                "plan_id",
-                "pos_id",
-                "trial_pos_id",
-                "duration",
-            }:
+            if set(subscription) != {"offering_id", "plan_id", "duration"}:
                 raise ValueError(f"products.{product_name} entry has invalid fields")
             plan_id = subscription.get("plan_id")
             offering_id = subscription.get("offering_id")
@@ -273,17 +266,15 @@ def _load_btcpay_config(path: Path) -> dict[str, Any]:
                 raise ValueError(
                     f"products.{product_name} entry is missing offering_id"
                 )
-            if any(
-                not isinstance(subscription.get(field), str)
-                or not subscription[field].strip()
-                for field in ("pos_id", "trial_pos_id")
-            ):
-                raise ValueError(f"products.{product_name} entry has invalid POS IDs")
             if subscription.get("duration") not in {"month", "year"}:
                 raise ValueError(f"products.{product_name} entry has invalid duration")
             if plan_id in plans:
                 raise ValueError(f"Duplicate subscription plan ID: {plan_id}")
-            plans[plan_id] = SubscriptionPlan(offering_id=offering_id)
+            plans[plan_id] = SubscriptionPlan(
+                product=product_name,
+                offering_id=offering_id,
+                duration=subscription["duration"],
+            )
 
     portal_duration_minutes = daemon.get("portal_duration_minutes", 1440)
     if isinstance(portal_duration_minutes, bool) or not isinstance(
@@ -294,7 +285,6 @@ def _load_btcpay_config(path: Path) -> dict[str, Any]:
         "base_url": base_url.strip(),
         "store_id": store_id.strip(),
         "api_key": api_key.strip(),
-        "pos_app_id": pos_app_id.strip(),
         "plans": plans,
         "portal_duration_minutes": portal_duration_minutes,
     }
@@ -452,14 +442,14 @@ class SubscriptionAPI:
             return catalog
 
     def _load_catalog(self) -> PlanCatalogResponse:
-        items = [
-            PlanCatalogItem.from_greenfield(
-                plan_id,
-                self.client.get_offering_plan(plan.offering_id, plan_id),
+        plans: dict[str, list[PlanCatalogItem]] = {}
+        for plan_id, plan in self.config.plans.items():
+            greenfield_plan = self.client.get_offering_plan(plan.offering_id, plan_id)
+            item = PlanCatalogItem.from_greenfield(
+                plan_id, plan.duration, greenfield_plan
             )
-            for plan_id, plan in self.config.plans.items()
-        ]
-        return PlanCatalogResponse(plans=items)
+            plans.setdefault(plan.product, []).append(item)
+        return PlanCatalogResponse(plans=plans)
 
     def _matching_subscriber(
         self,
