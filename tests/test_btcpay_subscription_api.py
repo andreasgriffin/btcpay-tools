@@ -828,6 +828,25 @@ def test_http_status_unknown_plan_returns_404_without_upstream_call() -> None:
         thread.join(timeout=2)
 
 
+def test_http_help_endpoint_returns_readme() -> None:
+    server = create_server(config(), FakeClient())
+    thread = _start(server)
+    try:
+        response = requests.get(
+            f"http://127.0.0.1:{server.server_port}/help", timeout=2
+        )
+        readme = Path("btcpay_tools/btcpay_subscription_api/README.md").read_text(
+            encoding="utf-8"
+        )
+        assert response.status_code == HTTPStatus.OK
+        assert response.headers["Content-Type"].startswith("text/markdown")
+        assert response.text == readme
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_http_store_endpoint_returns_base_url_and_store_id() -> None:
     client = FakeClient()
     server = create_server(config(), client)

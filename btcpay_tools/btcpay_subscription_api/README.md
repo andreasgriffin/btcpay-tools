@@ -152,3 +152,14 @@ Responses carry `schema_version: 1`. Adding optional fields is not a breaking
 change. Renaming or changing the meaning of a field requires a new
 `schema_version`. Clients should ignore unknown fields and reject unsupported
 major versions.
+
+## Endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/health` | Liveness check |
+| GET | `/help` | This document |
+| GET | `/api/store` | BTCPay base URL and store ID |
+| GET | `/api/subscription-plans` | Plan catalog grouped by product |
+| POST | `/api/subscriptions/status` | Subscription state for one plan |
+| POST | `/api/subscriptions/management-url` | Subscriber portal URL |
