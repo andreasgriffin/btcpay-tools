@@ -82,8 +82,8 @@ Returns `{"status":"ok"}`.
 
 ### `GET /api/subscription-plans`
 
-Returns every plan in the YAML catalog with public Greenfield plan metadata.
-Member counts are omitted. The response is cached in-process for
+Returns every plan in the YAML catalog as an object keyed by plan ID, with public
+Greenfield plan metadata. Member counts are omitted. The response is cached in-process for
 `CATALOG_CACHE_TTL_SECONDS` (default 300; `0` disables caching), so BTCPay is
 not queried per request.
 
@@ -92,7 +92,7 @@ curl http://127.0.0.1:8080/api/subscription-plans
 ```
 
 ```json
-{"schema_version":1,"plans":[{"plan_id":"plan-x","name":"Monthly","description":"Standard monthly.","price":"19.99","currency":"USD","recurringType":"Monthly","trialDays":14,"gracePeriodDays":7,"status":"Active","features":["feature-analytics"]}]}
+{"schema_version":1,"plans":{"business-plan":{"name":"Monthly","description":"Standard monthly.","price":"19.99","currency":"USD","recurringType":"Monthly","trialDays":14,"gracePeriodDays":7,"status":"Active","features":["feature-analytics"]}}}
 ```
 
 ### `GET /api/store`

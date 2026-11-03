@@ -100,7 +100,6 @@ class PlanCatalogItem(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    plan_id: str
     name: str
     description: str | None = None
     price: str
@@ -112,8 +111,8 @@ class PlanCatalogItem(BaseModel):
     features: list[str] = Field(default_factory=list)
 
     @classmethod
-    def from_greenfield(cls, plan_id: str, plan: dict[str, Any]) -> PlanCatalogItem:
-        return cls.model_validate({**plan, "plan_id": plan_id})
+    def from_greenfield(cls, plan: dict[str, Any]) -> PlanCatalogItem:
+        return cls.model_validate(plan)
 
 
 class StoreInfoResponse(BaseModel):
@@ -128,4 +127,4 @@ class PlanCatalogResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     schema_version: int = SCHEMA_VERSION
-    plans: list[PlanCatalogItem]
+    plans: dict[str, PlanCatalogItem]

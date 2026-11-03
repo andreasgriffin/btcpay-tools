@@ -697,9 +697,10 @@ def test_catalog_returns_only_configured_plans_and_caches_within_ttl() -> None:
     first = api.get_catalog()
     second = api.get_catalog()
 
-    assert [plan.plan_id for plan in first.plans] == ["plan-monthly"]
-    assert first.plans[0].price == "19.99"
-    assert "memberCount" not in first.model_dump()["plans"][0]
+    assert list(first.plans) == ["plan-monthly"]
+    assert first.plans["plan-monthly"].price == "19.99"
+    assert "memberCount" not in first.model_dump()["plans"]["plan-monthly"]
+    assert "plan_id" not in first.model_dump()["plans"]["plan-monthly"]
     assert second == first
     assert sum(call[0] == "get_offering_plan" for call in client.calls) == 1
 
@@ -749,7 +750,8 @@ def test_http_status_and_catalog_routes_and_rate_limits() -> None:
         catalog = requests.get(f"{address}/api/subscription-plans", timeout=2)
         assert catalog.status_code == HTTPStatus.OK
         assert catalog.json()["schema_version"] == 1
-        assert catalog.json()["plans"][0]["plan_id"] == "plan-monthly"
+        assert list(catalog.json()["plans"]) == ["plan-monthly"]
+        assert catalog.json()["plans"]["plan-monthly"]["name"] == "Monthly"
 
         first = requests.post(
             f"{address}/api/subscriptions/status", json=status_payload, timeout=2

@@ -436,14 +436,13 @@ class SubscriptionAPI:
             return catalog
 
     def _load_catalog(self) -> PlanCatalogResponse:
-        items = [
-            PlanCatalogItem.from_greenfield(
-                plan_id,
-                self.client.get_offering_plan(plan.offering_id, plan_id),
+        plans = {
+            plan_id: PlanCatalogItem.from_greenfield(
+                self.client.get_offering_plan(plan.offering_id, plan_id)
             )
             for plan_id, plan in self.config.plans.items()
-        ]
-        return PlanCatalogResponse(plans=items)
+        }
+        return PlanCatalogResponse(plans=plans)
 
     def _matching_subscriber(
         self,
