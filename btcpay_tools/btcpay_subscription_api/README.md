@@ -82,30 +82,18 @@ Returns `{"status":"ok"}`.
 
 ### `GET /api/subscription-plans`
 
-Returns every plan in the YAML catalog as an object keyed by plan ID, with public
-Greenfield plan metadata. Member counts are omitted. The response is cached in-process for
-`CATALOG_CACHE_TTL_SECONDS` (default 300; `0` disables caching), so BTCPay is
-not queried per request.
+Returns the YAML catalog grouped the same way as `products`: an object keyed by
+product name, each value a list of plans. Each plan carries its `plan_id`, the
+configured `duration`, and public Greenfield plan metadata. Member counts are
+omitted. The response is cached in-process for `CATALOG_CACHE_TTL_SECONDS`
+(default 300; `0` disables caching), so BTCPay is not queried per request.
 
 ```sh
 curl http://127.0.0.1:8080/api/subscription-plans
 ```
 
 ```json
-{"schema_version":1,"plans":{"business-plan":{"name":"Monthly","description":"Standard monthly.","price":"19.99","currency":"USD","recurringType":"Monthly","trialDays":14,"gracePeriodDays":7,"status":"Active","features":["feature-analytics"]}}}
-```
-
-### `GET /api/store`
-
-Returns the BTCPay server base URL and store ID the service is configured for.
-No upstream BTCPay call is made.
-
-```sh
-curl http://127.0.0.1:8080/api/store
-```
-
-```json
-{"schema_version":1,"base_url":"https://btcpay.example.org","store_id":"replace-with-store-id"}
+{"schema_version":1,"plans":{"business-plan":[{"plan_id":"plan_4JmXn9YxbMbTv75dNK","duration":"year","name":"Business","description":"Standard yearly.","price":"199.00","currency":"USD","recurringType":"Yearly","trialDays":14,"gracePeriodDays":7,"status":"Active","features":["feature-analytics"]}],"notifications":[{"plan_id":"plan_JCvJEumcQBEDrxHgs4","duration":"month","name":"Notifications monthly","description":"Monthly alerts.","price":"9.00","currency":"USD","recurringType":"Monthly","trialDays":14,"gracePeriodDays":7,"status":"Active","features":[]},{"plan_id":"plan_6GdwKTCXLDtSMR8WL1","duration":"year","name":"Notifications yearly","description":"Yearly alerts.","price":"90.00","currency":"USD","recurringType":"Yearly","trialDays":14,"gracePeriodDays":7,"status":"Active","features":[]}]}}
 ```
 
 ### `POST /api/subscriptions/status`

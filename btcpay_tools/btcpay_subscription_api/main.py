@@ -76,7 +76,9 @@ class BtcpayGateway(Protocol):
 
 @dataclass(frozen=True)
 class SubscriptionPlan:
+    product: str
     offering_id: str
+    duration: str
 
 
 @dataclass(frozen=True)
@@ -268,7 +270,11 @@ def _load_btcpay_config(path: Path) -> dict[str, Any]:
                 raise ValueError(f"products.{product_name} entry has invalid duration")
             if plan_id in plans:
                 raise ValueError(f"Duplicate subscription plan ID: {plan_id}")
-            plans[plan_id] = SubscriptionPlan(offering_id=offering_id)
+            plans[plan_id] = SubscriptionPlan(
+                product=product_name,
+                offering_id=offering_id,
+                duration=subscription["duration"],
+            )
 
     portal_duration_minutes = daemon.get("portal_duration_minutes", 1440)
     if isinstance(portal_duration_minutes, bool) or not isinstance(
@@ -436,12 +442,13 @@ class SubscriptionAPI:
             return catalog
 
     def _load_catalog(self) -> PlanCatalogResponse:
-        plans = {
-            plan_id: PlanCatalogItem.from_greenfield(
-                self.client.get_offering_plan(plan.offering_id, plan_id)
+        plans: dict[str, list[PlanCatalogItem]] = {}
+        for plan_id, plan in self.config.plans.items():
+            greenfield_plan = self.client.get_offering_plan(plan.offering_id, plan_id)
+            item = PlanCatalogItem.from_greenfield(
+                plan_id, plan.duration, greenfield_plan
             )
-            for plan_id, plan in self.config.plans.items()
-        }
+            plans.setdefault(plan.product, []).append(item)
         return PlanCatalogResponse(plans=plans)
 
     def _matching_subscriber(
