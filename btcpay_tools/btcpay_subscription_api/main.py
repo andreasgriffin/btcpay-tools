@@ -257,13 +257,7 @@ def _load_btcpay_config(path: Path) -> dict[str, Any]:
         for subscription in subscriptions:
             if not isinstance(subscription, dict):
                 raise ValueError(f"products.{product_name} entries must be mappings")
-            if set(subscription) != {
-                "offering_id",
-                "plan_id",
-                "pos_id",
-                "trial_pos_id",
-                "duration",
-            }:
+            if set(subscription) != {"offering_id", "plan_id", "duration"}:
                 raise ValueError(f"products.{product_name} entry has invalid fields")
             plan_id = subscription.get("plan_id")
             offering_id = subscription.get("offering_id")
@@ -273,12 +267,6 @@ def _load_btcpay_config(path: Path) -> dict[str, Any]:
                 raise ValueError(
                     f"products.{product_name} entry is missing offering_id"
                 )
-            if any(
-                not isinstance(subscription.get(field), str)
-                or not subscription[field].strip()
-                for field in ("pos_id", "trial_pos_id")
-            ):
-                raise ValueError(f"products.{product_name} entry has invalid POS IDs")
             if subscription.get("duration") not in {"month", "year"}:
                 raise ValueError(f"products.{product_name} entry has invalid duration")
             if plan_id in plans:

@@ -192,19 +192,13 @@ products: # Sample plan catalog
   business-plan:
     - offering_id: offering-business
       plan_id: plan-business
-      pos_id: business
-      trial_pos_id: business-trial
       duration: year
   notifications:
     - offering_id: offering-notifications
       plan_id: plan-notification-month
-      pos_id: notification-month
-      trial_pos_id: notification-month-trial
       duration: month
     - offering_id: offering-notifications
       plan_id: plan-notification-year
-      pos_id: notification-year
-      trial_pos_id: notification-year-trial
       duration: year
 daemon: # Portal settings
   portal_duration_minutes: 720
@@ -238,8 +232,6 @@ products:
   business-plan:
     - offering_id: offering-business
       plan_id: plan-business
-      pos_id: business
-      trial_pos_id: business-trial
       duration: year
 client:
   npub_bitcoin_safe_pos: npub-example
@@ -249,6 +241,72 @@ client:
 
     with pytest.raises(ValueError, match="unknown top-level fields"):
         _load_btcpay_config(path)
+
+
+def test_config_loader_rejects_invalid_duration(tmp_path: Path) -> None:
+    path = tmp_path / "btcpay.yaml"
+    path.write_text(
+        """
+btcpay_base:
+  base_url: https://pay.example.org
+  pos_app_id: pos-app
+  store_id: store
+  api_key: secret-token
+products:
+  business-plan:
+    - offering_id: offering-business
+      plan_id: plan-business
+      duration: yeaar
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid duration"):
+        _load_btcpay_config(path)
+
+
+def test_config_loader_rejects_missing_duration(tmp_path: Path) -> None:
+    path = tmp_path / "btcpay.yaml"
+    path.write_text(
+        """
+btcpay_base:
+  base_url: https://pay.example.org
+  pos_app_id: pos-app
+  store_id: store
+  api_key: secret-token
+products:
+  business-plan:
+    - offering_id: offering-business
+      plan_id: plan-business
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid fields"):
+        _load_btcpay_config(path)
+
+
+def test_config_loader_accepts_minimal_product_entries(tmp_path: Path) -> None:
+    path = tmp_path / "btcpay.yaml"
+    path.write_text(
+        """
+btcpay_base:
+  base_url: https://pay.example.org
+  pos_app_id: pos-app
+  store_id: store
+  api_key: secret-token
+products:
+  business-plan:
+    - offering_id: offering-business
+      plan_id: plan-business
+      duration: year
+""",
+        encoding="utf-8",
+    )
+
+    assert _load_btcpay_config(path)["plans"] == {
+        "plan-business": SubscriptionPlan("offering-business"),
+    }
 
 
 def test_derive_subscriber_email_keeps_only_safe_characters() -> None:
