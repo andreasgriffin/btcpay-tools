@@ -235,18 +235,15 @@ def _load_btcpay_config(path: Path) -> dict[str, Any]:
     base_url = btcpay_base.get("base_url")
     store_id = btcpay_base.get("store_id")
     api_key = btcpay_base.get("api_key")
-    pos_app_id = btcpay_base.get("pos_app_id")
-    if not all(
-        isinstance(value, str) and value.strip()
-        for value in (base_url, store_id, api_key, pos_app_id)
+    if not (
+        isinstance(base_url, str)
+        and isinstance(store_id, str)
+        and isinstance(api_key, str)
+        and base_url.strip()
+        and store_id.strip()
+        and api_key.strip()
     ):
-        raise ValueError(
-            "btcpay_base must define base_url, pos_app_id, store_id, and api_key"
-        )
-    if not isinstance(base_url, str) or not isinstance(store_id, str):
-        raise ValueError("btcpay_base contains invalid URL or store ID")
-    if not isinstance(api_key, str) or not isinstance(pos_app_id, str):
-        raise ValueError("btcpay_base contains invalid API key or POS app ID")
+        raise ValueError("btcpay_base must define base_url, store_id, and api_key")
     if not isinstance(daemon, dict):
         raise ValueError("daemon must be a YAML mapping")
 
@@ -282,7 +279,6 @@ def _load_btcpay_config(path: Path) -> dict[str, Any]:
         "base_url": base_url.strip(),
         "store_id": store_id.strip(),
         "api_key": api_key.strip(),
-        "pos_app_id": pos_app_id.strip(),
         "plans": plans,
         "portal_duration_minutes": portal_duration_minutes,
     }

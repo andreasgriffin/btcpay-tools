@@ -185,7 +185,6 @@ def test_config_loader_flattens_multiple_products_into_plan_allowlist(
         """
 btcpay_base:
   base_url: https://btcpay.example.org
-  pos_app_id: pos-app
   store_id: store
   api_key: secret-token
 products: # Sample plan catalog
@@ -225,7 +224,6 @@ def test_config_loader_rejects_nostr_client_block(tmp_path: Path) -> None:
         """
 btcpay_base:
   base_url: https://btcpay.example.org
-  pos_app_id: pos-app
   store_id: store
   api_key: secret-token
 products:
@@ -249,7 +247,6 @@ def test_config_loader_rejects_invalid_duration(tmp_path: Path) -> None:
         """
 btcpay_base:
   base_url: https://pay.example.org
-  pos_app_id: pos-app
   store_id: store
   api_key: secret-token
 products:
@@ -271,7 +268,6 @@ def test_config_loader_rejects_missing_duration(tmp_path: Path) -> None:
         """
 btcpay_base:
   base_url: https://pay.example.org
-  pos_app_id: pos-app
   store_id: store
   api_key: secret-token
 products:
@@ -292,7 +288,6 @@ def test_config_loader_accepts_minimal_product_entries(tmp_path: Path) -> None:
         """
 btcpay_base:
   base_url: https://pay.example.org
-  pos_app_id: pos-app
   store_id: store
   api_key: secret-token
 products:

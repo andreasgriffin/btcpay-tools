@@ -1,6 +1,5 @@
 btcpay_base:
   base_url: "https://btcpay.example.org"
-  pos_app_id: "replace-with-pos-app-id"
   store_id: "replace-with-store-id"
   api_key: "replace-with-api-key"
 
