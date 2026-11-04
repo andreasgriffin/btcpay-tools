@@ -26,6 +26,7 @@ from btcpay_tools.btcpay_subscription_api.models import (
     PlanCatalogItem,
     PlanCatalogResponse,
     StoreInfoResponse,
+    SubscriptionStatusCode,
     SubscriptionStatusResponse,
 )
 
@@ -430,7 +431,14 @@ class SubscriptionAPI:
             self.get_subscription_status(plan_id, buyer_email)
             for plan_id in sorted(self.config.plans)
         ]
-        return [status for status in statuses if status.isActive is True]
+
+        live_statuses = {
+            SubscriptionStatusCode.ACTIVE,
+            SubscriptionStatusCode.TRIAL,
+            SubscriptionStatusCode.GRACE,
+        }
+
+        return [status for status in statuses if status.status in live_statuses]
 
     def get_store_info(self) -> StoreInfoResponse:
         return StoreInfoResponse(
