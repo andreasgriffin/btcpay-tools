@@ -130,6 +130,29 @@ The endpoint is limited per IP by `STATUS_RATE_LIMIT_REQUESTS` per
 `STATUS_RATE_LIMIT_WINDOW_SECONDS` (default 30 per 60 seconds), in addition to
 the global limit.
 
+### `POST /api/subscriptions/active`
+
+Returns every configured plan the buyer currently has an active subscription
+for, in one request. Only the `buyerEmail` is sent; the service checks each plan
+in the YAML catalog. Plans without an active subscription are omitted, so an
+empty array is returned when there are none. Each element has the same shape
+as the `status` response. Plans are ordered by `plan_id`.
+
+```sh
+curl http://127.0.0.1:8080/api/subscriptions/active \
+  -H 'Content-Type: application/json' \
+  -d '{"buyerEmail":"buyer@example.org"}'
+```
+
+```json
+[{"schema_version":1,"plan_id":"plan_4JmXn9YxbMbTv75dNK","status":"trial","phase":"trial","isActive":true,"periodEnd":null,"trialEnd":1794263217,"gracePeriodEnd":null,"processingInvoiceId":null}]
+```
+
+This route issues one BTCPay subscriber lookup per configured plan, so the
+per-IP status limit (`STATUS_RATE_LIMIT_REQUESTS`) counts one request regardless
+of how many plans exist. The upstream fan-out is bounded by the size of the
+catalog.
+
 ### `POST /api/subscriptions/management-url`
 
 Returns a BTCPay subscriber portal URL for the plan. Creates a trial checkout
