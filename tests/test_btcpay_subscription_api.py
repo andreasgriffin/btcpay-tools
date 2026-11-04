@@ -971,6 +971,59 @@ def test_http_status_and_catalog_routes_and_rate_limits() -> None:
         thread.join(timeout=2)
 
 
+def test_active_subscriptions_lists_only_active_plans_across_catalog() -> None:
+    client = _multi_plan_client()
+    subscribers = {
+        "offering-yearly": subscriber(plan_id="plan-yearly", phase="Trial"),
+        "offering-business": subscriber(plan_id="plan-business", is_active=False),
+    }
+
+    def get_subscriber(
+        offering_id: str, customer_selector: str
+    ) -> dict[str, Any] | None:
+        client.calls.append(("get_subscriber", offering_id, customer_selector))
+        return subscribers.get(offering_id)
+
+    client.get_subscriber = get_subscriber  # type: ignore[method-assign]
+    api = SubscriptionAPI(config(plans=MULTI_PLAN_CONFIG), client)
+
+    active = api.get_active_subscriptions("buyer@example.org")
+
+    assert [status.plan_id for status in active] == ["plan-yearly"]
+    assert active[0].status is SubscriptionStatusCode.TRIAL
+    assert active[0].isActive is True
+    assert len([call for call in client.calls if call[0] == "get_subscriber"]) == 6
+
+
+def test_http_active_subscriptions_returns_array_of_active_plans() -> None:
+    client = FakeClient()
+    client.subscriber = subscriber()
+    server = create_server(config(), client)
+    thread = _start(server)
+    try:
+        address = f"http://127.0.0.1:{server.server_port}/api/subscriptions/active"
+        response = requests.post(
+            address,
+            json={"buyerEmail": "buyer@example.org"},
+            timeout=2,
+        )
+        assert response.status_code == HTTPStatus.OK
+        assert isinstance(response.json(), list)
+        assert [item["plan_id"] for item in response.json()] == ["plan-monthly"]
+        assert response.json()[0]["status"] == "active"
+
+        invalid = requests.post(
+            address,
+            json={"plan_id": "plan-monthly", "buyerEmail": "buyer@example.org"},
+            timeout=2,
+        )
+        assert invalid.status_code == HTTPStatus.BAD_REQUEST
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_http_status_unknown_plan_returns_404_without_upstream_call() -> None:
     client = FakeClient()
     server = create_server(config(), client)

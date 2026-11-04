@@ -38,6 +38,7 @@ MAX_PLAN_ID_LENGTH = 128
 MAX_EMAIL_LENGTH = 254
 MANAGEMENT_URL_PATH = "/api/subscriptions/management-url"
 STATUS_PATH = "/api/subscriptions/status"
+ACTIVE_PATH = "/api/subscriptions/active"
 CATALOG_PATH = "/api/subscription-plans"
 STORE_PATH = "/api/store"
 
@@ -421,6 +422,16 @@ class SubscriptionAPI:
         except Exception as exc:
             raise _upstream_error(exc) from None
 
+    def get_active_subscriptions(
+        self,
+        buyer_email: str,
+    ) -> list[SubscriptionStatusResponse]:
+        statuses = [
+            self.get_subscription_status(plan_id, buyer_email)
+            for plan_id in sorted(self.config.plans)
+        ]
+        return [status for status in statuses if status.isActive is True]
+
     def get_store_info(self) -> StoreInfoResponse:
         return StoreInfoResponse(
             base_url=self.config.btcpay_base_url,
@@ -572,6 +583,26 @@ def _upstream_error(exc: Exception) -> ApiError:
 
 
 def parse_payload(body: bytes, config: ApiConfig) -> tuple[str, str]:
+    payload = _decode_json_object(body)
+    if set(payload) != {"plan_id", "buyerEmail"}:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "Request fields are invalid")
+    plan_id = payload.get("plan_id")
+    if not isinstance(plan_id, str) or not plan_id or len(plan_id) > MAX_PLAN_ID_LENGTH:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "plan_id is invalid")
+    buyer_email = _valid_buyer_email(payload.get("buyerEmail"))
+    if plan_id not in config.plans:
+        raise ApiError(HTTPStatus.NOT_FOUND, "Unknown plan")
+    return plan_id, buyer_email
+
+
+def parse_email_payload(body: bytes) -> str:
+    payload = _decode_json_object(body)
+    if set(payload) != {"buyerEmail"}:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "Request fields are invalid")
+    return _valid_buyer_email(payload.get("buyerEmail"))
+
+
+def _decode_json_object(body: bytes) -> dict[str, Any]:
     try:
         payload = json.loads(
             body.decode("utf-8"),
@@ -582,21 +613,17 @@ def parse_payload(body: bytes, config: ApiConfig) -> tuple[str, str]:
         raise ApiError(HTTPStatus.BAD_REQUEST, "Malformed JSON") from None
     if not isinstance(payload, dict):
         raise ApiError(HTTPStatus.BAD_REQUEST, "Request must be a JSON object")
-    if set(payload) != {"plan_id", "buyerEmail"}:
-        raise ApiError(HTTPStatus.BAD_REQUEST, "Request fields are invalid")
-    plan_id = payload.get("plan_id")
-    buyer_email = payload.get("buyerEmail")
-    if not isinstance(plan_id, str) or not plan_id or len(plan_id) > MAX_PLAN_ID_LENGTH:
-        raise ApiError(HTTPStatus.BAD_REQUEST, "plan_id is invalid")
+    return payload
+
+
+def _valid_buyer_email(value: Any) -> str:
     if (
-        not isinstance(buyer_email, str)
-        or len(buyer_email) > MAX_EMAIL_LENGTH
-        or not EMAIL_PATTERN.fullmatch(buyer_email)
+        not isinstance(value, str)
+        or len(value) > MAX_EMAIL_LENGTH
+        or not EMAIL_PATTERN.fullmatch(value)
     ):
         raise ApiError(HTTPStatus.BAD_REQUEST, "buyerEmail is invalid")
-    if plan_id not in config.plans:
-        raise ApiError(HTTPStatus.NOT_FOUND, "Unknown plan")
-    return plan_id, buyer_email
+    return value
 
 
 def create_server(
@@ -642,17 +669,24 @@ class SubscriptionRequestHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, catalog.model_dump(mode="json"))
 
     def do_POST(self) -> None:
-        if self.path not in {MANAGEMENT_URL_PATH, STATUS_PATH}:
+        if self.path not in {MANAGEMENT_URL_PATH, STATUS_PATH, ACTIVE_PATH}:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
         if not self._allow_global_request():
             return
-        if self.path == STATUS_PATH and not self._allow_status_request():
+        if self.path in {STATUS_PATH, ACTIVE_PATH} and not self._allow_status_request():
             return
         body = self._read_json_body()
         if body is None:
             return
         try:
+            if self.path == ACTIVE_PATH:
+                buyer_email = parse_email_payload(body)
+                active = self.subscription_api.get_active_subscriptions(buyer_email)
+                self._send_json(
+                    HTTPStatus.OK, [status.model_dump(mode="json") for status in active]
+                )
+                return
             plan_id, buyer_email = parse_payload(body, self.subscription_api.config)
             if self.path == STATUS_PATH:
                 status = self.subscription_api.get_subscription_status(
@@ -736,7 +770,7 @@ class SubscriptionRequestHandler(BaseHTTPRequestHandler):
     def _send_json(
         self,
         status: HTTPStatus,
-        payload: dict[str, Any],
+        payload: Any,
         headers: dict[str, str] | None = None,
     ) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
