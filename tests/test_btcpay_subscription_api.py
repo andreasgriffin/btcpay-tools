@@ -768,6 +768,167 @@ def test_catalog_upstream_failure_is_generic_gateway_error() -> None:
     assert "secret-token" not in error.value.message
 
 
+def _multi_plan_client() -> FakeClient:
+    client = FakeClient()
+    client.plan_by_id = {
+        "plan-monthly": {
+            **client.plan_by_id["plan-monthly"],
+            "name": "Monthly",
+            "price": "6.99",
+            "recurringType": "Monthly",
+        },
+        "plan-yearly": {
+            **client.plan_by_id["plan-monthly"],
+            "id": "plan-yearly",
+            "name": "Yearly",
+            "price": "59.99",
+            "recurringType": "Yearly",
+        },
+        "plan-lifetime": {
+            **client.plan_by_id["plan-monthly"],
+            "id": "plan-lifetime",
+            "name": "Lifetime",
+            "price": "149.99",
+            "recurringType": "One time",
+            "trialDays": None,
+        },
+        "plan-business": {
+            **client.plan_by_id["plan-monthly"],
+            "id": "plan-business",
+            "name": "Business",
+            "price": "199.00",
+            "recurringType": "Yearly",
+        },
+    }
+    return client
+
+
+MULTI_PLAN_CONFIG = {
+    "plan-yearly": SubscriptionPlan("notifications", "offering-yearly", "year"),
+    "plan-lifetime": SubscriptionPlan("notifications", "offering-lifetime", "year"),
+    "plan-monthly": SubscriptionPlan("notifications", "offering-monthly", "month"),
+    "plan-business": SubscriptionPlan("business-plan", "offering-business", "year"),
+}
+
+
+def test_catalog_returns_every_plan_of_a_product_with_its_own_metadata() -> None:
+    api = SubscriptionAPI(config(plans=MULTI_PLAN_CONFIG), _multi_plan_client())
+
+    catalog = api.get_catalog().model_dump(mode="json")
+
+    assert sorted(catalog["plans"]) == ["business-plan", "notifications"]
+    notifications = catalog["plans"]["notifications"]
+    assert len(notifications) == 3
+    assert len({item["plan_id"] for item in notifications}) == 3
+    assert [
+        (
+            item["plan_id"],
+            item["name"],
+            item["price"],
+            item["recurringType"],
+            item["duration"],
+        )
+        for item in notifications
+    ] == [
+        ("plan-monthly", "Monthly", "6.99", "Monthly", "month"),
+        ("plan-lifetime", "Lifetime", "149.99", "One time", "year"),
+        ("plan-yearly", "Yearly", "59.99", "Yearly", "year"),
+    ]
+    assert notifications[1]["trialDays"] is None
+    assert notifications[0]["gracePeriodDays"] == 7
+    assert notifications[0]["currency"] == "USD"
+    assert catalog["plans"]["business-plan"][0]["plan_id"] == "plan-business"
+
+
+def test_catalog_order_is_deterministic_regardless_of_config_order() -> None:
+    reversed_config = dict(reversed(list(MULTI_PLAN_CONFIG.items())))
+
+    first = SubscriptionAPI(
+        config(plans=MULTI_PLAN_CONFIG), _multi_plan_client()
+    ).get_catalog()
+    second = SubscriptionAPI(
+        config(plans=reversed_config), _multi_plan_client()
+    ).get_catalog()
+
+    assert first == second
+    assert [item.plan_id for item in first.plans["notifications"]] == [
+        "plan-monthly",
+        "plan-lifetime",
+        "plan-yearly",
+    ]
+
+
+def test_status_and_management_url_are_requested_for_the_selected_plan_only() -> None:
+    client = _multi_plan_client()
+    client.subscriber = subscriber(plan_id="plan-yearly")
+    api = SubscriptionAPI(config(plans=MULTI_PLAN_CONFIG), client)
+
+    status = api.get_subscription_status("plan-yearly", "buyer@example.org")
+    assert status.plan_id == "plan-yearly"
+    assert status.status is SubscriptionStatusCode.ACTIVE
+    assert (
+        "get_subscriber",
+        "offering-yearly",
+        "Email:buyer@example.org",
+    ) in client.calls
+    assert not any(
+        call[1] == "offering-monthly"
+        for call in client.calls
+        if call[0] == "get_subscriber"
+    )
+
+    client.calls.clear()
+    client.subscriber = subscriber(plan_id="plan-yearly")
+    api.create_management_url("plan-yearly", "buyer@example.org", "192.0.2.1")
+    assert (
+        "get_subscriber",
+        "offering-yearly",
+        "Email:buyer@example.org",
+    ) in client.calls
+    assert client.calls[-1][0] == "create_portal_session"
+    assert client.calls[-1][1]["offering_id"] == "offering-yearly"
+
+
+def test_monthly_subscription_does_not_satisfy_yearly_plan_status() -> None:
+    client = _multi_plan_client()
+    client.subscriber = subscriber(plan_id="plan-monthly")
+    api = SubscriptionAPI(config(plans=MULTI_PLAN_CONFIG), client)
+
+    status = api.get_subscription_status("plan-yearly", "buyer@example.org")
+
+    assert status.plan_id == "plan-yearly"
+    assert status.status is SubscriptionStatusCode.NOT_FOUND
+
+
+def test_each_plan_of_a_product_checks_out_with_its_own_plan_id() -> None:
+    client = _multi_plan_client()
+    client.subscriber = None
+    api = SubscriptionAPI(config(plans=MULTI_PLAN_CONFIG), client)
+
+    for index, plan_id in enumerate(("plan-monthly", "plan-yearly", "plan-lifetime")):
+        client.checkout = {
+            "planStarted": True,
+            "subscriber": {"plan": {"id": plan_id}, "customer": {"id": "customer-1"}},
+        }
+        api.create_management_url(plan_id, "buyer@example.org", f"192.0.2.{index + 1}")
+
+    checkouts = [call[1] for call in client.calls if call[0] == "create_plan_checkout"]
+    assert [(c["plan_id"], c["offering_id"]) for c in checkouts] == [
+        ("plan-monthly", "offering-monthly"),
+        ("plan-yearly", "offering-yearly"),
+        ("plan-lifetime", "offering-lifetime"),
+    ]
+
+
+def test_unknown_plan_of_a_product_is_rejected_with_not_found() -> None:
+    api = SubscriptionAPI(config(plans=MULTI_PLAN_CONFIG), _multi_plan_client())
+
+    with pytest.raises(ApiError) as error:
+        api.create_management_url("plan-unknown", "buyer@example.org", "192.0.2.1")
+
+    assert error.value.status == HTTPStatus.NOT_FOUND
+
+
 def _start(server: Any) -> threading.Thread:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

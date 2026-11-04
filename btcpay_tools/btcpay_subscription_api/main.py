@@ -33,6 +33,7 @@ logger = logging.getLogger("btcpay_subscription_api")
 EMAIL_PATTERN = re.compile(
     r"^[^\s@<>]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$"
 )
+DURATION_ORDER = {"month": 0, "year": 1}
 MAX_PLAN_ID_LENGTH = 128
 MAX_EMAIL_LENGTH = 254
 MANAGEMENT_URL_PATH = "/api/subscriptions/management-url"
@@ -442,8 +443,17 @@ class SubscriptionAPI:
             return catalog
 
     def _load_catalog(self) -> PlanCatalogResponse:
+        """Every configured plan, grouped by product. Order is independent of the YAML order."""
+        ordered = sorted(
+            self.config.plans.items(),
+            key=lambda entry: (
+                entry[1].product,
+                DURATION_ORDER[entry[1].duration],
+                entry[0],
+            ),
+        )
         plans: dict[str, list[PlanCatalogItem]] = {}
-        for plan_id, plan in self.config.plans.items():
+        for plan_id, plan in ordered:
             greenfield_plan = self.client.get_offering_plan(plan.offering_id, plan_id)
             item = PlanCatalogItem.from_greenfield(
                 plan_id, plan.duration, greenfield_plan
